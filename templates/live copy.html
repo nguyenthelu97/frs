@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Live recognition</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    .live-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+    #video, #overlay { border:1px solid #444; border-radius:6px }
+    .controls{margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Live recognition</h1>
+    <p><a href="{{ url_for('index') }}">Back</a></p>
+    <div class="live-wrap">
+      <video id="video" width="640" height="480" autoplay muted playsinline></video>
+      <canvas id="overlay" width="640" height="480"></canvas>
+      <div class="controls">
+        Interval (ms): <input id="interval" type="number" value="1200" style="width:100px">
+        <button id="start">Start</button>
+        <button id="stop" disabled>Stop</button>
+        <span id="status" style="margin-left:12px"></span>
+      </div>
+    </div>
+  </div>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('start');
+const stopBtn = document.getElementById('stop');
+const intervalInput = document.getElementById('interval');
+const statusEl = document.getElementById('status');
+let timer = null;
+
+async function initCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width:640, height:480 }, audio: false });
+    video.srcObject = stream;
+    await video.play();
+  }catch(e){
+    alert('Không thể mở camera: ' + e.message);
+    throw e;
+  }
+}
+
+function drawBoxes(results){
+  // clear and draw current video frame as background for better alignment
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  if(!results) return;
+  results.forEach(r=>{
+    const b = r.box;
+    ctx.strokeStyle = (r.name === 'Unknown') ? 'red' : 'lime';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.left, b.top, b.width, b.height);
+    ctx.font = '18px Arial';
+    ctx.fillStyle = (r.name === 'Unknown') ? 'red' : 'lime';
+    const text = r.name + (r.employee_id ? (' ('+r.employee_id+')') : '');
+    ctx.fillText(text, b.left + 4, Math.max(18, b.top + 18));
+  });
+}
+
+async function sendFrame(){
+  if(video.paused || video.ended) return;
+  // create offscreen canvas to capture full frame
+  const off = document.createElement('canvas');
+  off.width = canvas.width; off.height = canvas.height;
+  const offCtx = off.getContext('2d');
+  offCtx.drawImage(video, 0, 0, off.width, off.height);
+  const blob = await new Promise(res => off.toBlob(res, 'image/jpeg', 0.7));
+  const fd = new FormData();
+  fd.append('frame', blob, 'frame.jpg');
+  try{
+    statusEl.textContent = 'Sending...';
+    const resp = await fetch('{{ url_for("api_recognize") }}', { method:'POST', body: fd });
+    if(!resp.ok){
+      statusEl.textContent = 'Server error: ' + resp.status;
+      return;
+    }
+    const data = await resp.json();
+    drawBoxes(data.results || []);
+    statusEl.textContent = 'Last: ' + (data.timestamp || '');
+  }catch(err){
+    statusEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+startBtn.onclick = async () => {
+  startBtn.disabled = true; stopBtn.disabled = false;
+  await initCamera();
+  const ms = parseInt(intervalInput.value) || 1200;
+  timer = setInterval(sendFrame, ms);
+};
+
+stopBtn.onclick = () => {
+  if(timer) clearInterval(timer);
+  timer = null;
+  startBtn.disabled = false; stopBtn.disabled = true;
+  statusEl.textContent = 'Stopped';
+};
+</script>
+</body>
+</html>

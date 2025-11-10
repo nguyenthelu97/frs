@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>History</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>Attendance History</h1>
+    <p><a href="{{ url_for('index') }}">Back</a> | <a href="{{ url_for('export') }}">Export Excel</a></p>
+
+    <form method="get" class="filter">
+      Date: <input type="date" name="date" value="{{ date_filter }}">
+      Employee ID: <input name="emp_id" value="{{ emp_filter }}">
+      <button type="submit">Filter</button>
+    </form>
+
+    <table class="hist">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Time</th>
+          <th>Date</th>
+          <th>Employee</th>
+          <th>Type</th>
+          <th>Proof</th>
+          <th>Confidence</th>
+        </tr>
+      </thead>
+      <tbody>
+{% for rec in history %}
+  {# lấy các giá trị 1 lần, an toàn nếu key không tồn tại #}
+  {% set ts = rec.get('timestamp','') %}
+  {% set time_str = rec.get('time') if rec.get('time') else (ts.split('T')[-1] if ts else '') %}
+  {% set date_str = rec.get('date') if rec.get('date') else (ts.split('T')[0] if ts else '') %}
+  {% set conf = rec.get('confidence') %}
+  <tr>
+    <td>{{ loop.index }}</td>
+    <td>{{ time_str }}</td>
+    <td>{{ date_str }}</td>
+    <td>{{ rec.get('name','-') }} {% if rec.get('employee_id') %}({{ rec.get('employee_id') }}){% endif %}</td>
+    <td>{{ rec.get('type','-') }}</td>
+    <td>
+      {% if rec.get('proof') %}
+        <a href="{{ url_for('proofs', filename=rec.get('proof')) }}" target="_blank">
+          <img src="{{ url_for('proofs', filename=rec.get('proof')) }}" class="proof-thumb">
+        </a>
+      {% else %}
+        -
+      {% endif %}
+    </td>
+    <td>
+      {% if conf is not none %}
+        {{ '%.3f' | format(conf) }}
+      {% else %}
+        -
+      {% endif %}
+    </td>
+  </tr>
+{% else %}
+  <tr><td colspan="7">No records</td></tr>
+{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

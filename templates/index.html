@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Employees</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>Employees</h1>
+<div class="nav">
+  <a href="{{ url_for('register') }}">Register (upload)</a> |
+  <a href="{{ url_for('live_page') }}">Live recognition</a> |
+  <a href="{{ url_for('history') }}">History</a> |
+  <a href="{{ url_for('export') }}">Export</a>
+</div>
+
+    <div class="list">
+      {% if employees %}
+        {% for e in employees %}
+          <div class="card">
+            {% set img = url_for('thumbs', filename=e['id'] + '.jpg') %}
+            <img src="{{ img }}" onerror="this.src='https://via.placeholder.com/120x120?text=No+Img'">
+            <div class="meta">
+              <div class="name">{{ e['name'] }}</div>
+              <div class="id">{{ e['id'] }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p>No employees yet. <a href="{{ url_for('register') }}">Register one</a>.</p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

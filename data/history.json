@@ -1,0 +1,238 @@
+[
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "timestamp": "2025-11-08T14:09:16",
+    "type": "in",
+    "date": "2025-11-08",
+    "proof": "11111_1762585756.jpg"
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "timestamp": "2025-11-08T14:09:27",
+    "type": "out",
+    "date": "2025-11-08",
+    "proof": "11111_1762585767.jpg"
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "14:12:09",
+    "timestamp": "2025-11-08T14:12:09",
+    "type": "in",
+    "proof": "11111_1762585929.jpg",
+    "confidence": 0.318319547408728
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "14:33:22",
+    "timestamp": "2025-11-08T14:33:22",
+    "type": "out",
+    "proof": "11111_1762587202.jpg",
+    "confidence": 0.46172330564506736
+  },
+  {
+    "employee_id": "123",
+    "name": "A Triet",
+    "date": "2025-11-08",
+    "time": "14:33:28",
+    "timestamp": "2025-11-08T14:33:28",
+    "type": "in",
+    "proof": "123_1762587208.jpg",
+    "confidence": 0.3979208831253397
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "14:33:43",
+    "timestamp": "2025-11-08T14:33:43",
+    "type": "in",
+    "proof": "11111_1762587223.jpg",
+    "confidence": 0.49678407962201737
+  },
+  {
+    "employee_id": "123",
+    "name": "A Triet",
+    "date": "2025-11-08",
+    "time": "14:33:44",
+    "timestamp": "2025-11-08T14:33:44",
+    "type": "out",
+    "proof": "123_1762587224.jpg",
+    "confidence": 0.35407108530622017
+  },
+  {
+    "employee_id": "1212",
+    "name": "A Vu",
+    "date": "2025-11-08",
+    "time": "14:35:25",
+    "timestamp": "2025-11-08T14:35:25",
+    "type": "in",
+    "proof": "1212_1762587325.jpg",
+    "confidence": 0.3773378966263789
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "14:55:18",
+    "timestamp": "2025-11-08T14:55:18",
+    "type": "out",
+    "proof": "11111_1762588518.jpg",
+    "confidence": 0.3430073600857213
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "14:56:32",
+    "timestamp": "2025-11-08T14:56:32",
+    "type": "in",
+    "proof": "11111_1762588592.jpg",
+    "confidence": 0.31838852450665495
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "14:57:53",
+    "timestamp": "2025-11-08T14:57:53",
+    "type": "out",
+    "proof": "11111_1762588673.jpg",
+    "confidence": 0.435906954630364
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:06:23",
+    "timestamp": "2025-11-08T15:06:23",
+    "type": "in",
+    "proof": "11111_1762589183.jpg",
+    "confidence": 0.4786269406420546
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:06:33",
+    "timestamp": "2025-11-08T15:06:33",
+    "type": "out",
+    "proof": "11111_1762589193.jpg",
+    "confidence": 0.3035263498578973
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:06:47",
+    "timestamp": "2025-11-08T15:06:47",
+    "type": "in",
+    "proof": "11111_1762589207.jpg",
+    "confidence": 0.3342580942628256
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:06:57",
+    "timestamp": "2025-11-08T15:06:57",
+    "type": "out",
+    "proof": "11111_1762589217.jpg",
+    "confidence": 0.454199633323786
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:07:07",
+    "timestamp": "2025-11-08T15:07:07",
+    "type": "in",
+    "proof": "11111_1762589227.jpg",
+    "confidence": 0.353787052513976
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:07:27",
+    "timestamp": "2025-11-08T15:07:27",
+    "type": "out",
+    "proof": "11111_1762589247.jpg",
+    "confidence": 0.3895117014786207
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:07:37",
+    "timestamp": "2025-11-08T15:07:37",
+    "type": "in",
+    "proof": "11111_1762589257.jpg",
+    "confidence": 0.33115467555252637
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:09:15",
+    "timestamp": "2025-11-08T15:09:15",
+    "type": "out",
+    "proof": "11111_1762589355.jpg",
+    "confidence": 0.45590003814468466
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:09:25",
+    "timestamp": "2025-11-08T15:09:25",
+    "type": "in",
+    "proof": "11111_1762589365.jpg",
+    "confidence": 0.37157326014929737
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:09:36",
+    "timestamp": "2025-11-08T15:09:36",
+    "type": "out",
+    "proof": "11111_1762589376.jpg",
+    "confidence": 0.3798357061422548
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:09:56",
+    "timestamp": "2025-11-08T15:09:56",
+    "type": "in",
+    "proof": "11111_1762589396.jpg",
+    "confidence": 0.32159952455170343
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:10:06",
+    "timestamp": "2025-11-08T15:10:06",
+    "type": "out",
+    "proof": "11111_1762589406.jpg",
+    "confidence": 0.35169055083404094
+  },
+  {
+    "employee_id": "11111",
+    "name": "A Lữ",
+    "date": "2025-11-08",
+    "time": "15:10:17",
+    "timestamp": "2025-11-08T15:10:17",
+    "type": "in",
+    "proof": "11111_1762589417.jpg",
+    "confidence": 0.33839371407891655
+  }
+]
