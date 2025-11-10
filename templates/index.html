@@ -1,36 +1,170 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Employees</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14"></script>
+  <style>
+    :root{
+      --bg:#f4f6fb; --card:#ffffff; --muted:#6b7280; --accent:#1f6feb; --accent-2:#0ea5a4;
+      --shadow: 0 6px 18px rgba(15,23,42,0.06);
+      --radius:12px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    
+    html,body{height:100%;margin:0;background:var(--bg);color:#0f172a}
+    .container{max-width:1100px;margin:28px auto;padding:20px}
+    
+    /* Top app bar */
+    .appbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+    h1{margin:0;font-size:20px}
+    .subtitle{color:var(--muted);font-size:13px}
+    
+    /* Taskbar (tabs) */
+    .taskbar{display:flex;gap:8px;background:transparent;padding:8px;border-radius:10px}
+    .tab{background:transparent;border:0;padding:8px 14px;border-radius:10px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .18s ease;display:flex;align-items:center;gap:8px}
+    .tab:hover{background:rgba(15,23,42,0.04);color:#0f172a}
+    .tab.active{background:linear-gradient(90deg,rgba(31,111,235,0.12),rgba(14,165,164,0.06));box-shadow:var(--shadow);color:var(--accent);}
+    
+    /* toolbar on right */
+    .right-tools{display:flex;align-items:center;gap:10px}
+    .search{border:1px solid rgba(15,23,42,0.06);background:white;padding:8px 10px;border-radius:10px;min-width:220px;display:flex;align-items:center;gap:8px}
+    .search input{border:0;outline:none;font-size:14px}
+    .btn{background:var(--accent);color:#fff;padding:8px 12px;border-radius:9px;border:0;cursor:pointer;font-weight:600}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid rgba(31,111,235,0.12)}
+    
+    /* main area */
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:18px}
+    @media(max-width:980px){.grid{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:720px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:420px){.grid{grid-template-columns:1fr}}
+    
+    .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:var(--shadow);display:flex;gap:12px;align-items:center}
+    .avatar{width:72px;height:72px;border-radius:10px;flex-shrink:0;overflow:hidden;border:1px solid rgba(15,23,42,0.04);display:flex;align-items:center;justify-content:center}
+    .avatar img{width:100%;height:100%;object-fit:cover;display:block}
+    .meta{flex:1}
+    .meta .name{font-weight:700;color:#0f172a}
+    .meta .id{color:var(--muted);font-size:13px;margin-top:6px}
+    .meta .actions{margin-top:8px;display:flex;gap:8px}
+    .pill{font-size:12px;padding:6px 8px;border-radius:8px;background:rgba(15,23,42,0.04);color:var(--muted);}
+    
+    .empty{padding:28px;background:linear-gradient(180deg,rgba(255,255,255,0.6),transparent);border-radius:12px;text-align:center;color:var(--muted)}
+    
+    /* small helpers */
+    a{color:var(--accent);text-decoration:none}
+    a:hover{text-decoration:underline}
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Employees</h1>
-<div class="nav">
-  <a href="{{ url_for('register') }}">Register (upload)</a> |
-  <a href="{{ url_for('live_page') }}">Live recognition</a> |
-  <a href="{{ url_for('history') }}">History</a> |
-  <a href="{{ url_for('export') }}">Export</a>
-</div>
-
-    <div class="list">
-      {% if employees %}
-        {% for e in employees %}
-          <div class="card">
-            {% set img = url_for('thumbs', filename=e['id'] + '.jpg') %}
-            <img src="{{ img }}" onerror="this.src='https://via.placeholder.com/120x120?text=No+Img'">
-            <div class="meta">
-              <div class="name">{{ e['name'] }}</div>
-              <div class="id">{{ e['id'] }}</div>
-            </div>
+  <div id="app" class="container">
+    <div class="appbar">
+      <div class="brand">
+        <div class="logo">HR</div>
+        <div>
+          <h1>Nhân viên</h1>
+          <div class="subtitle">Quản lý nhân viên</div>
+        </div>
+      </div>
+      
+      <div class="right-tools">
+        <div class="taskbar" role="tablist">
+          <button class="tab" :class="{active:activeTab==='register'}" @click="go('register')">Đăng ký</button>
+          <button class="tab" :class="{active:activeTab==='live'}" @click="go('live')">Nhận diện trực tiếp</button>
+          <button class="tab" :class="{active:activeTab==='history'}" @click="go('history')">Lịch sử</button>
+          <button class="tab" :class="{active:activeTab==='export'}" @click="go('export')">Xuất Excel</button>
+        </div>
+        
+        <div class="search" title="Search employees">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <input placeholder="Tìm kiếm theo tên hoặc ID" v-model="filterText" @input="applyFilter">
+        </div>
+        
+        <button class="btn" @click="refresh">Làm mới</button>
+      </div>
+    </div>
+    
+    <div v-if="filtered.length" class="grid">
+      <div class="card" v-for="emp in filtered" :key="emp.id">
+        <div class="avatar">
+          <img :src="getThumbUrl(emp.id)" @error="useDefaultImg" :alt="emp.name">
+        </div>
+        <div class="meta">
+          <div class="name">${emp.name}</div>
+          <div class="id">ID: ${emp.id}</div>
+          
+          <div class="actions" style="margin-top:8px">
+            <a :href="`/employee/${emp.id}/edit`" class="pill">Chỉnh sửa</a>
+            
+            <!-- Option A: API delete via JS -->
+            <button @click="confirmDelete(emp.id)" class="pill" style="background:#fff4f6;border:1px solid rgba(160,0,0,0.06);color:#a00;cursor:pointer">Xóa</button>
           </div>
-        {% endfor %}
-      {% else %}
-        <p>No employees yet. <a href="{{ url_for('register') }}">Register one</a>.</p>
-      {% endif %}
+        </div>
+      </div>
+    </div>
+    
+    <div v-else class="empty">
+      No employees yet. <a :href="urlFor('register')">Đăng ký mới</a>.
     </div>
   </div>
+  
+  <script id="initial-data" type="application/json">
+    {{ employees|tojson|safe }}
+  </script>
+  <script>
+    new Vue({
+      el: '#app',
+      delimiters: ['${','}'],
+      data: {
+        employees: JSON.parse(document.getElementById('initial-data').textContent || '[]'),
+        filterText: '',
+        filtered: [],
+        activeTab: 'employees'
+      },
+      created(){
+        this.filtered = this.employees.slice();
+        // pick active tab from current path (simple heuristic)
+        const path = window.location.pathname || '';
+        if(path.includes('live')) this.activeTab = 'live';
+        else if(path.includes('register')) this.activeTab = 'register';
+        else if(path.includes('history')) this.activeTab = 'history';
+        else if(path.includes('export')) this.activeTab = 'export';
+        else this.activeTab = 'employees';
+      },
+      methods: {
+        async confirmDelete(id) {
+          if (!confirm(`Delete employee ${id}? This cannot be undone.`)) return;
+          try {
+            // dùng POST fallback nếu bạn không muốn API DELETE
+            const resp = await fetch(`/api/employee/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            if (!resp.ok) {
+              const txt = await resp.text();
+              throw new Error(txt || ('Server ' + resp.status));
+            }
+            window.location.reload();
+          } catch (err) {
+            alert('Delete failed: ' + (err.message || err));
+          }
+        },
+        getThumbUrl(id){ return `/thumbs/${id}.jpg`; },
+        useDefaultImg(e){ e.target.src = 'https://via.placeholder.com/120x120?text=No+Img'; },
+        applyFilter(){
+          const q = this.filterText.trim().toLowerCase();
+          if(!q){ this.filtered = this.employees.slice(); return }
+          this.filtered = this.employees.filter(e => (e.name||'').toLowerCase().includes(q) || String(e.id).includes(q));
+        },
+        refresh(){ window.location.reload(); },
+        go(route){
+          // friendly client-side navigation; fallback to server URL
+          const map = { register: '{{ url_for("register") }}', live: '{{ url_for("live_page") }}', history: '{{ url_for("history") }}', export: '{{ url_for("export") }}' };
+          const target = map[route] || '/';
+          window.location.href = target;
+        },
+        urlFor(name){ const map = { register: '{{ url_for("register") }}', live: '{{ url_for("live_page") }}', history: '{{ url_for("history") }}', export: '{{ url_for("export") }}' }; return map[name] || '#'; }
+      }
+    })
+  </script>
 </body>
 </html>

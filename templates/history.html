@@ -1,21 +1,44 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>History</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14"></script>
+  <style>
+    /* Một vài style cơ bản để bảng nhìn ổn */
+    body{font-family:Inter,Arial,Helvetica,sans-serif;background:#f4f6fb;color:#0f172a;margin:0;padding:20px}
+    .container{max-width:1100px;margin:0 auto}
+    h1{margin:0 0 10px}
+    .nav{margin:8px 0 18px}
+    .filter{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+    .filter input{padding:6px 8px;border-radius:6px;border:1px solid rgba(0,0,0,0.08)}
+    .filter button{padding:8px 12px;border-radius:8px;border:0;background:#1f6feb;color:#fff;cursor:pointer}
+    table.hist{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 6px 18px rgba(15,23,42,0.06)}
+    table.hist th, table.hist td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,0.04);font-size:14px}
+    table.hist thead th{background:#f8fafc;text-align:left}
+    .proof-thumb{width:88px;height:66px;object-fit:cover;border-radius:6px;border:1px solid rgba(0,0,0,0.06)}
+    .empty{padding:18px;text-align:center;color:#666}
+  </style>
 </head>
 <body>
-  <div class="container">
+  <div id="app" class="container">
     <h1>Attendance History</h1>
-    <p><a href="{{ url_for('index') }}">Back</a> | <a href="{{ url_for('export') }}">Export Excel</a></p>
-
-    <form method="get" class="filter">
-      Date: <input type="date" name="date" value="{{ date_filter }}">
-      Employee ID: <input name="emp_id" value="{{ emp_filter }}">
+    <div class="nav">
+      <a href="{{ url_for('index') }}">Back</a> |
+      <a href="{{ url_for('export') }}">Export Excel</a>
+    </div>
+    
+    <form @submit.prevent="filter" class="filter">
+      <label>
+        Date: <input type="date" v-model="filters.date">
+      </label>
+      <label>
+        Employee ID: <input v-model="filters.empId" placeholder="optional">
+      </label>
       <button type="submit">Filter</button>
     </form>
-
+    
     <table class="hist">
       <thead>
         <tr>
@@ -29,40 +52,83 @@
         </tr>
       </thead>
       <tbody>
-{% for rec in history %}
-  {# lấy các giá trị 1 lần, an toàn nếu key không tồn tại #}
-  {% set ts = rec.get('timestamp','') %}
-  {% set time_str = rec.get('time') if rec.get('time') else (ts.split('T')[-1] if ts else '') %}
-  {% set date_str = rec.get('date') if rec.get('date') else (ts.split('T')[0] if ts else '') %}
-  {% set conf = rec.get('confidence') %}
-  <tr>
-    <td>{{ loop.index }}</td>
-    <td>{{ time_str }}</td>
-    <td>{{ date_str }}</td>
-    <td>{{ rec.get('name','-') }} {% if rec.get('employee_id') %}({{ rec.get('employee_id') }}){% endif %}</td>
-    <td>{{ rec.get('type','-') }}</td>
-    <td>
-      {% if rec.get('proof') %}
-        <a href="{{ url_for('proofs', filename=rec.get('proof')) }}" target="_blank">
-          <img src="{{ url_for('proofs', filename=rec.get('proof')) }}" class="proof-thumb">
-        </a>
-      {% else %}
-        -
-      {% endif %}
-    </td>
-    <td>
-      {% if conf is not none %}
-        {{ '%.3f' | format(conf) }}
-      {% else %}
-        -
-      {% endif %}
-    </td>
-  </tr>
-{% else %}
-  <tr><td colspan="7">No records</td></tr>
-{% endfor %}
+        <tr v-for="(rec, idx) in filteredHistory" :key="idx">
+          <td>${idx + 1}</td>
+          <td>${formatTime(rec.timestamp)}</td>
+          <td>${formatDate(rec.timestamp)}</td>
+          <td>${rec.name} (${rec.employee_id})</td>
+          <td>${rec.type || '-'}</td>
+          <td>
+            <a v-if="rec.proof" :href="getProofUrl(rec.proof)" target="_blank" rel="noopener">
+              <img :src="getProofUrl(rec.proof)" class="proof-thumb" alt="proof">
+            </a>
+            <span v-else>-</span>
+          </td>
+          <td>${rec.confidence != null ? Number(rec.confidence).toFixed(3) : '-'}</td>
+        </tr>
+        <tr v-if="!filteredHistory.length">
+          <td colspan="7" class="empty">No records</td>
+        </tr>
       </tbody>
     </table>
   </div>
+  
+  <!-- ---------- Tách dữ liệu history ra thẻ JSON để tránh lỗi editor/linters ---------- -->
+  <script id="history-data" type="application/json">
+    {{ history|tojson|safe }}
+  </script>
+  <script id="filters-data" type="application/json">
+    {
+      "date": {{ date_filter|tojson|default("null") }},
+      "empId": {{ emp_filter|tojson|default("null") }}
+    }
+  </script>
+  <script>
+    new Vue({
+      el: '#app',
+      delimiters: ['${', '}'],
+      data: {
+        // đọc JSON history an toàn (editor sẽ không thấy Jinja trong object JS)
+        history: JSON.parse(document.getElementById('history-data').textContent || '[]'),
+        filters: (function(){
+          try {
+            return JSON.parse(document.getElementById('filters-data').textContent || '{}');
+          } catch(e) {
+            console.warn('Invalid filters JSON', e);
+            return { date: null, empId: null };
+          }
+        })()
+      },
+      computed: {
+        filteredHistory() {
+          return this.history.filter(rec => {
+            if (this.filters.date && !(rec.timestamp && rec.timestamp.startsWith(this.filters.date))) return false;
+            if (this.filters.empId && String(rec.employee_id) !== String(this.filters.empId)) return false;
+            return true;
+          });
+        }
+      },
+      methods: {
+        formatTime(ts) {
+          if (!ts) return '';
+          const parts = ts.split('T');
+          return parts[1] || '';
+        },
+        formatDate(ts) {
+          if (!ts) return '';
+          const parts = ts.split('T');
+          return parts[0] || '';
+        },
+        getProofUrl(filename) {
+          // Jinja sẽ render base URL cho proofs, kết quả ví dụ: "/proofs/"
+          return `{{ url_for('proofs', filename='') }}${filename}`;
+        },
+        filter() {
+          // hiện tại lọc client-side; có thể submit lên server nếu muốn (redirect với query params)
+          console.log('Filtering', this.filters);
+        }
+      }
+    });
+  </script>
 </body>
 </html>

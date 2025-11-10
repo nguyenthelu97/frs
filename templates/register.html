@@ -1,21 +1,309 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
-  <title>Register Employee</title>
+  <title>{{ 'Edit Employee' if edit else 'Register Employee' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-  <div class="container">
-    <h1>Register Employee</h1>
-    <p><a href="{{ url_for('index') }}">Back</a></p>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14"></script>
+  <style>
+    body {
+      font-family: Inter, Arial, Helvetica, sans-serif;
+      background: #f4f6fb;
+      color: #0f172a;
+      margin: 0;
+      padding: 20px
+    }
 
-    <form method="post" enctype="multipart/form-data" class="form">
-      <label>Employee ID<input name="emp_id" required></label>
-      <label>Full name<input name="name" required></label>
-      <label>Photo<input type="file" name="img" accept="image/*" required></label>
-      <button type="submit">Register</button>
+    .container {
+      max-width: 720px;
+      margin: 0 auto
+    }
+
+    h1 {
+      margin: 0 0 10px
+    }
+
+    .nav {
+      margin: 8px 0 18px
+    }
+
+    .form {
+      display: grid;
+      gap: 12px;
+      background: #fff;
+      padding: 16px;
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06)
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      font-weight: 600
+    }
+
+    input[type="text"],
+    input[type="file"] {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      margin-top: 6px
+    }
+
+    .btn {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 0;
+      background: #1f6feb;
+      color: #fff;
+      cursor: pointer
+    }
+
+    .btn.ghost {
+      background: transparent;
+      color: #1f6feb;
+      border: 1px solid rgba(31, 111, 235, 0.12)
+    }
+
+    .preview img {
+      width: 140px;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.06)
+    }
+
+    .camera-wrap {
+      position: relative;
+      width: 320px;
+      height: 240px;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden
+    }
+
+    .alert {
+      padding: 10px;
+      border-radius: 8px
+    }
+
+    .info {
+      background: #fff8e1;
+      color: #816000
+    }
+
+    .success {
+      background: #e6ffef;
+      color: #007a3a
+    }
+
+    .error {
+      background: #ffe6e6;
+      color: #8a0000
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app" class="container">
+    <h1>{{ 'Chỉnh sửa nhân viên' if edit else 'Đăng ký nhân viên' }}</h1>
+    <div class="nav">
+      <a href="{{ url_for('index') }}">Quay lại</a>
+    </div>
+
+    <form @submit.prevent="submit" class="form" novalidate>
+      <label>Mã nhân viên
+        <input v-model="form.empId" required>
+      </label>
+
+      <label>Họ và tên
+        <input v-model="form.name" required>
+      </label>
+
+      <div>
+        <div style="font-weight:600;margin-bottom:6px">Ảnh</div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="flex:1">
+            <input type="file" @change="handleFile" accept="image/*">
+            <div style="margin-top:8px;color:#666;font-size:13px">Hoặc chụp qua camera</div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <button type="button" class="btn ghost" @click="openCamera" v-if="!cameraActive">Sử dụng camera</button>
+              <button type="button" class="btn ghost" @click="closeCamera" v-if="cameraActive">Đóng camera</button>
+              <button type="button" class="btn" @click="takePhoto" :disabled="!cameraActive">Chụp ảnh</button>
+              <button type="button" class="btn ghost" @click="clearPhoto">Xóa</button>
+            </div>
+          </div>
+          <div style="width:160px">
+            <div class="preview">
+              <img v-if="previewData" :src="previewData" alt="preview">
+              <div v-else
+                style="width:140px;height:140px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#999">
+                Không có ảnh
+              </div>
+            </div>
+            <div v-show="cameraActive" style="margin-top:8px">
+              <div class="camera-wrap" ref="cameraWrap" style="width:160px;height:120px">
+                <video ref="camVideo" autoplay muted playsinline></video>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="submit" class="btn" :disabled="!canSubmit">${ isEdit ? 'Lưu' : 'Đăng ký' }</button>
+        <!-- <div style="margin-left:8px;color:#666;font-size:13px">Bắt buộc: Mã nhân viên (không thể thay đổi) và một bức ảnh</div> -->
+      </div>
+
+      <div v-if="message" :class="['alert', messageType]">
+        ${ message }
+      </div>
     </form>
   </div>
+
+  <!-- server-data: Jinja only here -->
+<script id="server-data" type="application/json">
+{
+  "isEdit": {{ edit|default(false)|tojson }},
+  "emp": {{ emp|default(None)|tojson }},
+  "urls": {
+    "register": {{ url_for('register')|tojson }},
+    "index": {{ url_for('index')|tojson }}
+  }
+}
+</script>
+
+  <!-- pure JS (no Jinja inside) -->
+  <script>
+    (function () {
+      let serverData = {};
+      try { serverData = JSON.parse(document.getElementById('server-data').textContent || '{}'); }
+      catch (e) { console.warn('server-data parse fail', e); serverData = {}; }
+
+      new Vue({
+        el: '#app',
+        delimiters: ['${', '}'],
+        data: {
+          isEdit: Boolean(serverData.isEdit),
+          serverEmp: serverData.emp || null,
+          urls: serverData.urls || {},
+          originalId: (serverData.emp && serverData.emp.id) ? String(serverData.emp.id) : '', // <-- NEW
+          form: {
+            empId: (serverData.emp && serverData.emp.id) ? String(serverData.emp.id) : '',
+            name: (serverData.emp && serverData.emp.name) ? String(serverData.emp.name) : '',
+            file: null
+          },
+          previewData: null,
+          cameraActive: false,
+          mediaStream: null,
+          message: '',
+          messageType: 'info'
+        },
+        created() {
+          if (this.isEdit && this.form.empId) {
+            this.previewData = `/thumbs/${encodeURIComponent(this.form.empId)}.jpg?ts=${Date.now()}`;
+          }
+        },
+        computed: {
+          canSubmit() {
+            if (this.isEdit) return this.form.empId && this.form.name;
+            return this.form.empId && this.form.name && this.form.file;
+          }
+        },
+        methods: {
+          handleFile(e) {
+            const f = e.target.files && e.target.files[0]; if (!f) return;
+            if (!f.type || !f.type.startsWith('image/')) { this.message = 'Please select an image file'; this.messageType = 'error'; return; }
+            this.form.file = f; this.createPreviewFromFile(f);
+          },
+          createPreviewFromFile(file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => { this.previewData = ev.target.result; };
+            reader.readAsDataURL(file);
+          },
+          async openCamera() {
+            if (this.cameraActive) return;
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+              this.mediaStream = stream;
+              this.cameraActive = true;
+              await this.$nextTick();
+              const v = this.$refs.camVideo;
+              if (!v) throw new Error('Video element not found');
+              v.srcObject = stream;
+              try { await v.play(); } catch (_) { }
+            } catch (err) {
+              console.error('camera error', err);
+              this.message = 'Cannot open camera: ' + (err.message || err); this.messageType = 'error';
+            }
+          },
+          closeCamera() {
+            if (this.mediaStream) { this.mediaStream.getTracks().forEach(t => t.stop()); this.mediaStream = null; }
+            this.cameraActive = false;
+          },
+          takePhoto() {
+            if (!this.cameraActive) return;
+            const v = this.$refs.camVideo; const w = v.videoWidth || 640, h = v.videoHeight || 480;
+            const c = document.createElement('canvas'); c.width = w; c.height = h;
+            c.getContext('2d').drawImage(v, 0, 0, w, h);
+            c.toBlob((blob) => {
+              if (!blob) { this.message = 'Capture failed'; this.messageType = 'error'; return; }
+              this.form.file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
+              this.previewData = c.toDataURL('image/jpeg', 0.9);
+              this.message = 'Photo captured'; this.messageType = 'success';
+            }, 'image/jpeg', 0.9);
+          },
+          clearPhoto() {
+            this.form.file = null;
+            if (this.isEdit && this.form.empId) this.previewData = `/thumbs/${encodeURIComponent(this.form.empId)}.jpg?ts=${Date.now()}`;
+            else this.previewData = null;
+          },
+          async submit() {
+            if (!this.canSubmit) { this.message = 'Please provide required fields'; this.messageType = 'error'; return; }
+
+            const fd = new FormData();
+            fd.append('name', this.form.name);
+            // always send desired/new emp_id in form data
+            fd.append('emp_id', this.form.empId);
+
+            if (this.form.file) fd.append('img', this.form.file, (this.form.file.name || 'photo.jpg'));
+
+            try {
+              if (this.isEdit) {
+                // IMPORTANT: send POST to the ORIGINAL id (the record we are editing),
+                // so server can find it and apply rename if emp_id changed.
+                const targetUrl = `/employee/${encodeURIComponent(this.originalId)}/edit`;
+                const res = await fetch(targetUrl, { method: 'POST', body: fd, redirect: 'follow' });
+
+                if (res.redirected) { window.location.href = res.url; return; }
+                if (!res.ok) {
+                  const t = await res.text();
+                  throw new Error(t || ('Server ' + res.status));
+                }
+                window.location.href = this.urls.index || '/';
+              } else {
+                const registerUrl = this.urls.register || '/register';
+                const res = await fetch(registerUrl, { method: 'POST', body: fd, redirect: 'follow' });
+                if (res.redirected) { window.location.href = res.url; return; }
+                if (!res.ok) {
+                  const t = await res.text();
+                  throw new Error(t || ('Server ' + res.status));
+                }
+                window.location.href = this.urls.index || '/';
+              }
+            } catch (err) {
+              console.error('submit error', err);
+              this.message = 'Error: ' + (err.message || err); this.messageType = 'error';
+            }
+          },
+        },
+        beforeDestroy() {
+          if (this.mediaStream) this.mediaStream.getTracks().forEach(t => t.stop());
+        }
+      });
+    })();
+  </script>
 </body>
+
 </html>

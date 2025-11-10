@@ -262,5 +262,181 @@ def api_recognize():
 
     return jsonify({'results': results, 'timestamp': ts_iso})
 
+@app.route('/api/employees')
+def api_employees():
+    emps = load_json(EMP_FILE, [])
+    return jsonify(emps)
+
+@app.route('/employee/<emp_id>/edit', methods=['GET', 'POST'])
+def edit_employee(emp_id):
+    emps = load_json(EMP_FILE, [])
+    emp = next((e for e in emps if str(e.get('id')) == str(emp_id)), None)
+    if emp is None:
+        flash('Employee not found', 'danger')
+        return redirect(url_for('index'))
+
+    if request.method == 'GET':
+        return render_template('register.html', edit=True, emp=emp)
+
+    # POST: update name and possibly id + image
+    new_id = request.form.get('emp_id', '').strip()
+    name = request.form.get('name','').strip()
+    file = request.files.get('img')
+
+    if not new_id:
+        flash('Employee ID is required', 'danger')
+        return redirect(url_for('edit_employee', emp_id=emp_id))
+    if not name:
+        flash('Name is required', 'danger')
+        return redirect(url_for('edit_employee', emp_id=emp_id))
+
+    # if new_id differs, check uniqueness
+    if str(new_id) != str(emp_id):
+        if any(str(e.get('id')) == str(new_id) for e in emps):
+            flash('New Employee ID already exists', 'warning')
+            return redirect(url_for('edit_employee', emp_id=emp_id))
+
+    # update name
+    emp['name'] = name
+
+    # handle new image if provided: recompute encoding + save thumb (replace encodings)
+    if file:
+        data = file.read()
+        arr = np.frombuffer(data, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None:
+            flash('Cannot read image', 'danger')
+            return redirect(url_for('edit_employee', emp_id=emp_id))
+
+        small = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
+        rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+        boxes = face_recognition.face_locations(rgb)
+        if not boxes:
+            flash('No face detected in new photo', 'warning')
+            return redirect(url_for('edit_employee', emp_id=emp_id))
+        encs = face_recognition.face_encodings(rgb, boxes)
+        if not encs:
+            flash('Cannot compute encoding', 'danger')
+            return redirect(url_for('edit_employee', emp_id=emp_id))
+
+        emp['encodings'] = [encoding_to_list(encs[0])]
+
+        # save thumb (scale box back to original)
+        top,right,bottom,left = boxes[0]
+        top, right, bottom, left = top*2, right*2, bottom*2, left*2
+        h, w = img.shape[:2]
+        top,left = max(0,top), max(0,left)
+        bottom,right = min(h,bottom), min(w,right)
+        crop = img[top:bottom, left:right]
+        if crop.size != 0:
+            thumb_path = os.path.join(THUMBS_DIR, f"{emp_id}.jpg")
+            save_image_jpg(thumb_path, crop)
+
+    # If ID changed, update emp['id'], rename thumb file and optionally update history/proofs
+    if str(new_id) != str(emp_id):
+        old_id = str(emp_id)
+        # update the emp's id
+        emp['id'] = new_id
+
+        # rename thumb file if exists
+        old_thumb = os.path.join(THUMBS_DIR, f"{old_id}.jpg")
+        new_thumb = os.path.join(THUMBS_DIR, f"{new_id}.jpg")
+        try:
+            if os.path.exists(old_thumb):
+                os.replace(old_thumb, new_thumb)  # atomic where possible
+        except Exception:
+            # fallback: try copy + remove
+            try:
+                import shutil
+                shutil.copy2(old_thumb, new_thumb)
+                os.remove(old_thumb)
+            except Exception:
+                pass
+
+        # update history entries' employee_id and rename proof files that start with old_id + '_'
+        try:
+            hist = load_json(HIST_FILE, [])
+            changed = False
+            for rec in hist:
+                if str(rec.get('employee_id')) == old_id:
+                    rec['employee_id'] = new_id
+                    changed = True
+            if changed:
+                save_json(HIST_FILE, hist)
+
+            # rename proof files that were named like "<old_id>_<ts>.jpg"
+            for fname in os.listdir(PROOFS_DIR):
+                if fname.startswith(f"{old_id}_"):
+                    old_path = os.path.join(PROOFS_DIR, fname)
+                    new_name = fname.replace(f"{old_id}_", f"{new_id}_", 1)
+                    new_path = os.path.join(PROOFS_DIR, new_name)
+                    try:
+                        os.replace(old_path, new_path)
+                        # Also update proof references in history if any (already updated by employee_id change, but proof filenames changed too)
+                        # If your history stores proof filename strings, you may need to update them:
+                        # loop again to fix filenames stored in history
+                    except Exception:
+                        try:
+                            import shutil
+                            shutil.copy2(old_path, new_path)
+                            os.remove(old_path)
+                        except Exception:
+                            pass
+            # Now update proof filenames inside history records (if stored)
+            hist = load_json(HIST_FILE, [])
+            changed = False
+            for rec in hist:
+                pf = rec.get('proof')
+                if isinstance(pf, str) and pf.startswith(f"{old_id}_"):
+                    rec['proof'] = pf.replace(f"{old_id}_", f"{new_id}_", 1)
+                    changed = True
+            if changed:
+                save_json(HIST_FILE, hist)
+        except Exception as e:
+            # don't fail whole update on proof/history rename problems
+            app.logger.exception("Error while updating history/proofs during id rename: %s", e)
+
+    # finally persist employees
+    save_json(EMP_FILE, emps)
+    flash('Employee updated', 'success')
+    # If ID changed, redirect to index (old edit URL no longer valid)
+    return redirect(url_for('index'))
+
+
+@app.route('/employee/<emp_id>/delete', methods=['POST'])
+def delete_employee(emp_id):
+    emps = load_json(EMP_FILE, [])
+    new_emps = [e for e in emps if str(e.get('id')) != str(emp_id)]
+    if len(new_emps) == len(emps):
+        flash('Employee not found', 'warning')
+        return redirect(url_for('index'))
+
+    # delete thumb file if exists
+    thumb_path = os.path.join(THUMBS_DIR, f"{emp_id}.jpg")
+    try:
+        if os.path.exists(thumb_path):
+            os.remove(thumb_path)
+    except Exception:
+        pass
+
+    save_json(EMP_FILE, new_emps)
+    flash('Employee deleted', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/api/employee/<emp_id>', methods=['DELETE'])
+def api_delete_employee(emp_id):
+    emps = load_json(EMP_FILE, [])
+    new_emps = [e for e in emps if str(e.get('id')) != str(emp_id)]
+    if len(new_emps) == len(emps):
+        return jsonify({'error': 'not found'}), 404
+    thumb_path = os.path.join(THUMBS_DIR, f"{emp_id}.jpg")
+    try:
+        if os.path.exists(thumb_path):
+            os.remove(thumb_path)
+    except Exception:
+        pass
+    save_json(EMP_FILE, new_emps)
+    return jsonify({'ok': True})
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)

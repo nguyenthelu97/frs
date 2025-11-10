@@ -1,305 +1,315 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Live recognition (smart capture)</title>
+  <title>Live Recognition</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14"></script>
   <style>
-    body { background:#f4f6fb }
-    .wrap { max-width:1100px; margin:20px auto; display:flex; gap:18px; align-items:flex-start }
-    .left { flex: 0 0 680px; display:flex; flex-direction:column; align-items:center; }
-    .right { flex: 1; min-width:300px; background:#fff; padding:12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06) }
-    video, canvas { border:1px solid #444; border-radius:6px; display:block }
-    .video-wrap { position:relative; width:640px; height:480px; background:#000 }
-    #video { width:640px; height:480px; display:block }
-    #overlay { position:absolute; left:0; top:0; pointer-events:none }
-    .controls { margin-top:8px; display:flex; gap:10px; align-items:center }
-    .status { margin-left:8px; color:#333 }
-    h2 { margin-top:0; font-size:18px }
-    .recents { display:flex; flex-direction:column; gap:10px; max-height:620px; overflow:auto; }
-    .item { display:flex; gap:10px; align-items:center; border:1px solid #eee; padding:8px; border-radius:6px }
-    .thumb { width:88px; height:66px; object-fit:cover; border-radius:4px; border:1px solid #ddd }
-    .meta { font-size:13px }
-    .meta .name { font-weight:600; color:#1b5fbf }
-    .meta .id { color:#666; font-size:12px }
-    .meta .time { color:#333; margin-top:6px; font-size:12px }
-    .meta .conf { color:#888; margin-top:4px; font-size:12px }
-    .empty { color:#777; padding:10px }
-  </style>
+  body { background:#f4f6fb }
+  .wrap { max-width:1100px; margin:20px auto; display:flex; gap:18px; align-items:flex-start }
+  .left { flex: 0 0 680px; display:flex; flex-direction:column; align-items:center; }
+  .right { flex: 1; min-width:300px; background:#fff; padding:12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06) }
+
+  /* video container: giữ kích thước cố định và chồng các phần tử lên nhau */
+  .video-wrap { position:relative; width:640px; height:480px; background:#000; overflow:visible; }
+
+  /* đặt cả video và canvas absolute để chồng đúng */
+  .video-wrap video {
+    position:absolute;
+    left:0; top:0;
+    width:100%; height:100%;
+    z-index:1;
+    border-radius:6px;
+    display:block;
+  }
+
+  .video-wrap canvas {
+    position:absolute;
+    left:0; top:0;
+    width:100%; height:100%;
+    z-index:3;             /* canvas nằm trên video */
+    pointer-events:none;   /* cho phép click qua canvas */
+    border-radius:6px;
+  }
+
+  /* controls nằm dưới, đảm bảo luôn trên các phần tử nằm bên dưới (nếu cần) */
+  .controls { margin-top:8px; display:flex; gap:10px; align-items:center; position:relative; z-index:10 }
+  .status { margin-left:8px; color:#333 }
+  h2 { margin-top:0; font-size:18px }
+
+  .recents { display:flex; flex-direction:column; gap:10px; max-height:620px; overflow:auto; }
+  .item { display:flex; gap:10px; align-items:center; border:1px solid #eee; padding:8px; border-radius:6px }
+  .thumb { width:88px; height:66px; object-fit:cover; border-radius:4px; border:1px solid #ddd }
+  .meta { font-size:13px }
+  .meta .name { font-weight:600; color:#1b5fbf }
+  .meta .id { color:#666; font-size:12px }
+  .meta .time { color:#333; margin-top:6px; font-size:12px }
+  .meta .conf { color:#888; margin-top:4px; font-size:12px }
+  .empty { color:#777; padding:10px }
+</style>
 </head>
 <body>
-  <div style="max-width:1200px;margin:10px auto"><a href="{{ url_for('index') }}">← Back</a></div>
-
-  <div class="wrap container">
-    <div class="left">
-      <h2>Live Camera</h2>
-      <div class="video-wrap">
-        <video id="video" autoplay muted playsinline></video>
-        <canvas id="overlay" width="640" height="480"></canvas>
-      </div>
-
-      <div class="controls">
-        <label>Min box width (px): <input id="minBoxWidth" type="number" value="300" style="width:80px;margin-left:6px"></label>
-        <label>Confirm frames: <input id="confirmCount" type="number" value="2" style="width:60px;margin-left:6px"></label>
-        <label>Cooldown (s): <input id="cooldown" type="number" value="10" style="width:60px;margin-left:6px"></label>
-        <button id="start">Start</button>
-        <button id="stop" disabled>Stop</button>
-        <span id="status" class="status">Stopped</span>
-      </div>
+  <div id="app">
+    <div class="nav container">
+      <a href="{{ url_for('index') }}">← Back</a>
     </div>
 
-    <div class="right">
-      <h2>Recent detections</h2>
-      <div id="recents" class="recents"><div class="empty">No detections yet.</div></div>
+    <div class="wrap container">
+      <div class="left">
+        <h2>Live Camera</h2>
+<div class="video-wrap">
+  <video ref="video" autoplay muted playsinline></video>
+  <canvas ref="overlay" id="overlay" width="640" height="480"></canvas>
+</div>
+
+        <div class="controls">
+          <label>Min box width (px): <input type="number" v-model.number="config.minBoxWidth"></label>
+          <label>Confirm frames: <input type="number" v-model.number="config.confirmCount"></label>
+          <label>Cooldown (s): <input type="number" v-model.number="config.cooldown"></label>
+          <button @click="startCamera" :disabled="running">Start</button>
+          <button @click="stopCamera" :disabled="!running">Stop</button>
+          <span class="status">${status}</span>
+        </div>
+      </div>
+
+      <div class="right">
+        <h2>Recent detections</h2>
+       <div class="recents" ref="recents">
+  <div v-if="!recents.length" class="empty">No detections yet.</div>
+          <div v-else v-for="(det, idx) in recents" :key="idx" class="item">
+            <img class="thumb" :src="det.thumb || 'https://via.placeholder.com/88x66?text=No+Img'">
+            <div class="meta">
+              <div class="name">${det.name || 'Unknown'}</div>
+              <div class="id" v-if="det.employee_id">ID: ${det.employee_id}</div>
+              <div class="time">${det.time}</div>
+              <div class="conf" v-if="det.confidence != null">confidence: ${det.confidence.toFixed(3)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-<script>
-/*
-  Logic:
-  - Use browser FaceDetector (if available) to detect faces locally and draw bounding box immediately.
-  - If any detected box meets size threshold (minBoxWidth) for confirmCount consecutive frames,
-    then capture and send frame to server (/api/recognize).
-  - After server match & logging, apply cooldown per employee_id to avoid duplicate logs.
-  - Fallback: if FaceDetector not supported, send frames periodically to server as before.
-*/
-
-const video = document.getElementById('video');
-const overlay = document.getElementById('overlay');
-const ctx = overlay.getContext('2d');
-const startBtn = document.getElementById('start');
-const stopBtn = document.getElementById('stop');
-const statusEl = document.getElementById('status');
-const recentsEl = document.getElementById('recents');
-
-const minBoxWidthInput = document.getElementById('minBoxWidth');
-const confirmCountInput = document.getElementById('confirmCount');
-const cooldownInput = document.getElementById('cooldown');
-
-let detector = null;
-let running = false;
-let pollTimer = null;
-let confirmCounter = 0;
-let lastBox = null;
-let lastSendedTime = 0;
-let lastSentEmployeeTimes = {}; // employee_id -> epoch
-
-// try to initialize FaceDetector API
-if ('FaceDetector' in window) {
-  try {
-    detector = new FaceDetector({ fastMode: true, maxDetectedFaces: 4 });
-    console.log('Using native FaceDetector');
-  } catch(e){
-    detector = null;
-    console.log('FaceDetector init failed', e);
-  }
-} else {
-  console.log('FaceDetector not supported, will fallback to server-side detection.');
-}
-
-// helper: add recent detection entry
-function addRecent(result, cropDataURL){
-  const placeholder = recentsEl.querySelector('.empty');
-  if (placeholder) placeholder.remove();
-  const item = document.createElement('div'); item.className = 'item';
-  const img = document.createElement('img'); img.className = 'thumb'; img.src = cropDataURL || ('https://via.placeholder.com/88x66?text=No+Img');
-  const meta = document.createElement('div'); meta.className = 'meta';
-  const name = document.createElement('div'); name.className = 'name'; name.textContent = result.name || 'Unknown';
-  const id = document.createElement('div'); id.className = 'id'; id.textContent = result.employee_id ? ('ID: ' + result.employee_id) : '';
-  const time = document.createElement('div'); time.className = 'time'; time.textContent = new Date().toLocaleString();
-  const conf = document.createElement('div'); conf.className = 'conf'; conf.textContent = result.confidence!=null?('confidence: '+Number(result.confidence).toFixed(3)):'';
-  meta.appendChild(name); meta.appendChild(id); meta.appendChild(time); meta.appendChild(conf);
-  item.appendChild(img); item.appendChild(meta);
-  recentsEl.insertBefore(item, recentsEl.firstChild);
-  while(recentsEl.children.length > 30) recentsEl.removeChild(recentsEl.lastChild);
-}
-
-// draw box helper
-function drawBox(box, label, color='lime'){
-  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-  ctx.rect(box.left, box.top, box.width, box.height); ctx.stroke();
-  ctx.fillStyle = color; ctx.font='16px Arial';
-  ctx.fillText(label, Math.max(4, box.left+4), Math.max(16, box.top+16));
-}
-
-// compute IoU-ish or simple overlap check (optional)
-function similarBox(a, b){
-  if(!a || !b) return false;
-  const dx = Math.abs((a.left+a.width/2) - (b.left+b.width/2));
-  const dy = Math.abs((a.top+a.height/2) - (b.top+b.height/2));
-  return (dx < Math.max(a.width,b.width)*0.4 && dy < Math.max(a.height,b.height)*0.4);
-}
-
-// capture frame into canvas and return blob + offCtx
-function captureOffscreen(){
-  const off = document.createElement('canvas');
-  off.width = overlay.width; off.height = overlay.height;
-  const offCtx = off.getContext('2d');
-  offCtx.drawImage(video, 0, 0, off.width, off.height);
-  return { off, offCtx };
-}
-
-// send frame to server and handle response
-async function sendFrameToServer(off){
-  const blob = await new Promise(res => off.toBlob(res, 'image/jpeg', 0.8));
-  const fd = new FormData(); fd.append('frame', blob, 'frame.jpg');
-  const resp = await fetch('{{ url_for("api_recognize") }}', { method:'POST', body: fd });
-  if(!resp.ok) throw new Error('server '+resp.status);
-  const data = await resp.json();
-  return data;
-}
-
-// main loop when detector available: poll camera at ~200ms, draw boxes, only send when size condition satisfied consecutively
-async function detectorLoop(){
-  if(!running) return;
-  // ensure overlay matches video
-  if(video.videoWidth && video.videoHeight){
-    overlay.width = video.videoWidth; overlay.height = video.videoHeight;
-  }
-  // capture current frame to offscreen for detection
-  const { off, offCtx } = captureOffscreen();
-  let faces = [];
-  if(detector){
-    try{
-      // FaceDetector returns bounding boxes in pixels relative to canvas size
-      faces = await detector.detect(off);
-      // faces: array of FaceDetection objects with boundingBox {x,y,width,height}
-    }catch(e){
-      console.warn('detector failed', e);
-      faces = [];
-    }
-  } else {
-    // fallback: call server quick detect (we will send whole frame and server returns boxes)
-    try{
-      const data = await sendFrameToServer(off);
-      faces = (data.results || []).map(r => ({ boundingBox: { x: r.box.left, y: r.box.top, width: r.box.width, height: r.box.height }, meta: r }));
-    }catch(e){
-      console.warn('fallback detect error', e);
-      faces = [];
-    }
-  }
-
-  // draw video frame as background
-  ctx.clearRect(0,0,overlay.width, overlay.height);
-  ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
-
-  if(faces.length === 0){
-    confirmCounter = 0;
-    lastBox = null;
-    // nothing detected; schedule next
-    if(running) pollTimer = setTimeout(detectorLoop, 200);
-    return;
-  }
-
-  // choose the biggest face (by width)
-  const faceObjs = faces.map(f => {
-    const bb = f.boundingBox || (f.box?f.box:{x:0,y:0,width:0,height:0});
-    return { left: Math.round(bb.x), top: Math.round(bb.y), width: Math.round(bb.width), height: Math.round(bb.height), meta: f.meta || null };
-  });
-  faceObjs.sort((a,b)=>b.width - a.width);
-  const best = faceObjs[0];
-
-  // draw box now
-  drawBox(best, 'Detecting', 'lime');
-
-  // check size threshold
-  const minW = parseInt(minBoxWidthInput.value) || 140;
-  if(best.width >= minW && (lastBox==null || similarBox(best, lastBox))){
-    confirmCounter += 1;
-  } else {
-    confirmCounter = 1;
-  }
-  lastBox = best;
-
-  // if confirmed for N frames -> capture & send
-  const needConfirm = parseInt(confirmCountInput.value) || 2;
-
-  if(confirmCounter >= needConfirm){
-    // cooldown check per employee unknown until server returns; also simple global cooldown
-    const now = Date.now()/1000;
-    if(now - lastSendedTime < 1.0){ // avoid firing many times per second
-      if(running) pollTimer = setTimeout(detectorLoop, 200);
-      return;
-    }
-
-    // capture and send to server
-    try{
-      statusEl.textContent = 'Capturing & sending...';
-      const { off:capCanvas } = captureOffscreen();
-      const data = await sendFrameToServer(capCanvas);
-      // draw server boxes if returned
-      const results = data.results || [];
-      // draw returned boxes (replace previous)
-      ctx.clearRect(0,0,overlay.width, overlay.height);
-      ctx.drawImage(video, 0, 0, overlay.width, overlay.height);
-      results.forEach(r=>{
-        drawBox(r.box, r.name || 'Unknown', r.name === 'Unknown' ? 'red' : 'lime');
-        // create local crop and add to sidebar
+  <script>
+  new Vue({
+    el: '#app',
+    delimiters: ['${', '}'],
+    data: {
+      running: false,
+      status: 'Stopped',
+      config: {
+        minBoxWidth: 300,
+        confirmCount: 2,
+        cooldown: 10
+      },
+      recents: [],
+      detector: null,
+      pollTimer: null,
+      confirmCounter: 0,
+      lastBox: null,
+      lastSendedTime: 0,
+      lastSentEmployeeTimes: {}
+    },
+    async created() {
+      if ('FaceDetector' in window) {
         try {
-          const sx = Math.max(0, r.box.left), sy = Math.max(0, r.box.top);
-          const sw = Math.max(1, r.box.width), sh = Math.max(1, r.box.height);
-          const thumbCanvas = document.createElement('canvas'); thumbCanvas.width = 88; thumbCanvas.height = 66;
-          const tctx = thumbCanvas.getContext('2d');
-          tctx.drawImage(video, sx, sy, sw, sh, 0, 0, 88, 66);
-          addRecent(r, thumbCanvas.toDataURL('image/jpeg', 0.8));
-        } catch(e){
-          addRecent(r, null);
+          this.detector = new FaceDetector({ fastMode: true, maxDetectedFaces: 4 })
+          console.log('Using native FaceDetector')
+        } catch(e) {
+          console.log('FaceDetector init failed', e)
         }
-      });
-      // set last send time
-      lastSendedTime = now;
-      // also update per-employee cooldown if employee_id returned
-      if(results && results.length>0){
-        results.forEach(r=>{
-          if(r.employee_id){
-            lastSentEmployeeTimes[r.employee_id] = now;
-          }
-        });
       }
-      statusEl.textContent = 'Last sent: ' + (data.timestamp || new Date().toLocaleTimeString());
-      // reset confirm counter
-      confirmCounter = 0;
-    }catch(e){
-      console.error('sendFrame error', e);
-      statusEl.textContent = 'Send error';
+    },
+    methods: {
+      async startCamera() {
+        this.running = true;
+        this.status = 'Starting camera...';
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { width:640, height:480 }, audio: false });
+          this.$refs.video.srcObject = stream;
+          await this.$refs.video.play();
+          this.status = 'Running (local detect)';
+          this.detectorLoop();
+        } catch(e) {
+          alert('Cannot open camera: ' + e.message);
+          this.running = false;
+          this.status = 'Error';
+        }
+      },
+      stopCamera() {
+        this.running = false;
+        this.status = 'Stopped';
+        if(this.pollTimer) clearTimeout(this.pollTimer);
+        // stop tracks
+        if(this.$refs.video.srcObject){
+          this.$refs.video.srcObject.getTracks().forEach(t=>t.stop());
+          this.$refs.video.srcObject = null;
+        }
+      },
+      async detectorLoop() {
+        if(!this.running) return;
+        // ensure overlay matches video
+        if(this.$refs.video.videoWidth && this.$refs.video.videoHeight){
+          this.$refs.overlay.width = this.$refs.video.videoWidth;
+          this.$refs.overlay.height = this.$refs.video.videoHeight;
+        }
+        // capture current frame to offscreen for detection
+        const { off, offCtx } = this.captureOffscreen();
+        let faces = [];
+        if(this.detector){
+          try{
+            // FaceDetector returns bounding boxes in pixels relative to canvas size
+            faces = await this.detector.detect(off);
+            // faces: array of FaceDetection objects with boundingBox {x,y,width,height}
+          }catch(e){
+            console.warn('detector failed', e);
+            faces = [];
+          }
+        } else {
+          // fallback: call server quick detect (we will send whole frame and server returns boxes)
+          try{
+            const data = await this.sendFrameToServer(off);
+            faces = (data.results || []).map(r => ({ boundingBox: { x: r.box.left, y: r.box.top, width: r.box.width, height: r.box.height }, meta: r }));
+          }catch(e){
+            console.warn('fallback detect error', e);
+            faces = [];
+          }
+        }
+
+        // draw video frame as background
+        const ctx = this.$refs.overlay.getContext('2d');
+        ctx.clearRect(0,0,this.$refs.overlay.width, this.$refs.overlay.height);
+        ctx.drawImage(this.$refs.video, 0, 0, this.$refs.overlay.width, this.$refs.overlay.height);
+
+        if(faces.length === 0){
+          this.confirmCounter = 0;
+          this.lastBox = null;
+          // nothing detected; schedule next
+          if(this.running) this.pollTimer = setTimeout(() => this.detectorLoop(), 200);
+          return;
+        }
+
+        // choose the biggest face (by width)
+        const faceObjs = faces.map(f => {
+          const bb = f.boundingBox || (f.box?f.box:{x:0,y:0,width:0,height:0});
+          return { left: Math.round(bb.x), top: Math.round(bb.y), width: Math.round(bb.width), height: Math.round(bb.height), meta: f.meta || null };
+        });
+        faceObjs.sort((a,b)=>b.width - a.width);
+        const best = faceObjs[0];
+
+        // draw box now
+        this.drawBox(ctx, best, 'Detecting', 'lime');
+
+        // check size threshold
+        const minW = this.config.minBoxWidth || 140;
+        if(best.width >= minW && (this.lastBox==null || this.similarBox(best, this.lastBox))){
+          this.confirmCounter += 1;
+        } else {
+          this.confirmCounter = 1;
+        }
+        this.lastBox = best;
+
+        // if confirmed for N frames -> capture & send
+        const needConfirm = this.config.confirmCount || 2;
+
+        if(this.confirmCounter >= needConfirm){
+          // cooldown check per employee unknown until server returns; also simple global cooldown
+          const now = Date.now()/1000;
+          if(now - this.lastSendedTime < 1.0){ // avoid firing many times per second
+            if(this.running) this.pollTimer = setTimeout(() => this.detectorLoop(), 200);
+            return;
+          }
+
+          // capture and send to server
+          try{
+            this.status = 'Capturing & sending...';
+            const { off:capCanvas } = this.captureOffscreen();
+            const data = await this.sendFrameToServer(capCanvas);
+            // draw server boxes if returned
+            const results = data.results || [];
+            // draw returned boxes (replace previous)
+            ctx.clearRect(0,0,this.$refs.overlay.width, this.$refs.overlay.height);
+            ctx.drawImage(this.$refs.video, 0, 0, this.$refs.overlay.width, this.$refs.overlay.height);
+            results.forEach(r=>{
+              this.drawBox(ctx, r.box, r.name || 'Unknown', r.name === 'Unknown' ? 'red' : 'lime');
+              // create local crop and add to sidebar
+              try {
+                const sx = Math.max(0, r.box.left), sy = Math.max(0, r.box.top);
+                const sw = Math.max(1, r.box.width), sh = Math.max(1, r.box.height);
+                const thumbCanvas = document.createElement('canvas'); thumbCanvas.width = 88; thumbCanvas.height = 66;
+                const tctx = thumbCanvas.getContext('2d');
+                tctx.drawImage(this.$refs.video, sx, sy, sw, sh, 0, 0, 88, 66);
+                this.addRecent(r, thumbCanvas.toDataURL('image/jpeg', 0.8));
+              } catch(e){
+                this.addRecent(r, null);
+              }
+            });
+            // set last send time
+            this.lastSendedTime = now;
+            // also update per-employee cooldown if employee_id returned
+            if(results && results.length>0){
+              results.forEach(r=>{
+                if(r.employee_id){
+                  this.lastSentEmployeeTimes[r.employee_id] = now;
+                }
+              });
+            }
+            this.status = 'Last sent: ' + (data.timestamp || new Date().toLocaleTimeString());
+            // reset confirm counter
+            this.confirmCounter = 0;
+          }catch(e){
+            console.error('sendFrame error', e);
+            this.status = 'Send error';
+          }
+        }
+
+        if(this.running) this.pollTimer = setTimeout(() => this.detectorLoop(), 150); // ~6-7 fps for detection
+      },
+      drawBox(ctx, box, label, color='lime'){
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        ctx.rect(box.left, box.top, box.width, box.height); ctx.stroke();
+        ctx.fillStyle = color; ctx.font='16px Arial';
+        ctx.fillText(label, Math.max(4, box.left+4), Math.max(16, box.top+16));
+      },
+      similarBox(a, b){
+        if(!a || !b) return false;
+        const dx = Math.abs((a.left+a.width/2) - (b.left+b.width/2));
+        const dy = Math.abs((a.top+a.height/2) - (b.top+b.height/2));
+        return (dx < Math.max(a.width,b.width)*0.4 && dy < Math.max(a.height,b.height)*0.4);
+      },
+      captureOffscreen(){
+        const off = document.createElement('canvas');
+        off.width = this.$refs.overlay.width; off.height = this.$refs.overlay.height;
+        const offCtx = off.getContext('2d');
+        offCtx.drawImage(this.$refs.video, 0, 0, off.width, off.height);
+        return { off, offCtx };
+      },
+      async sendFrameToServer(off){
+        const blob = await new Promise(res => off.toBlob(res, 'image/jpeg', 0.8));
+        const fd = new FormData(); fd.append('frame', blob, 'frame.jpg');
+        const resp = await fetch('{{ url_for("api_recognize") }}', { method:'POST', body: fd });
+        if(!resp.ok) throw new Error('server '+resp.status);
+        const data = await resp.json();
+        return data;
+      },
+      addRecent(result, cropDataURL){
+        const placeholder = this.$refs.recents.querySelector('.empty');
+        if (placeholder) placeholder.remove();
+        const item = document.createElement('div'); item.className = 'item';
+        const img = document.createElement('img'); img.className = 'thumb'; img.src = cropDataURL || ('https://via.placeholder.com/88x66?text=No+Img');
+        const meta = document.createElement('div'); meta.className = 'meta';
+        const name = document.createElement('div'); name.className = 'name'; name.textContent = result.name || 'Unknown';
+        const id = document.createElement('div'); id.className = 'id'; id.textContent = result.employee_id ? ('ID: ' + result.employee_id) : '';
+        const time = document.createElement('div'); time.className = 'time'; time.textContent = new Date().toLocaleString();
+        const conf = document.createElement('div'); conf.className = 'conf'; conf.textContent = result.confidence!=null?('confidence: '+Number(result.confidence).toFixed(3)):'';
+        meta.appendChild(name); meta.appendChild(id); meta.appendChild(time); meta.appendChild(conf);
+        item.appendChild(img); item.appendChild(meta);
+        this.$refs.recents.insertBefore(item, this.$refs.recents.firstChild);
+        while(this.$refs.recents.children.length > 30) this.$refs.recents.removeChild(this.$refs.recents.lastChild);
+      }
     }
-  }
-
-  if(running) pollTimer = setTimeout(detectorLoop, 150); // ~6-7 fps for detection
-}
-
-// start/stop handlers
-startBtn.onclick = async () => {
-  startBtn.disabled = true; stopBtn.disabled = false;
-  statusEl.textContent = 'Starting camera...';
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width:640, height:480 }, audio: false });
-    video.srcObject = stream;
-    await video.play();
-    // sync overlay size
-    overlay.width = video.videoWidth || 640;
-    overlay.height = video.videoHeight || 480;
-    running = true;
-    statusEl.textContent = 'Running (local detect)';
-    detectorLoop();
-  }catch(e){
-    alert('Cannot open camera: ' + e.message);
-    startBtn.disabled = false; stopBtn.disabled = true;
-    statusEl.textContent = 'Error';
-  }
-};
-
-stopBtn.onclick = () => {
-  running = false;
-  startBtn.disabled = false; stopBtn.disabled = true;
-  statusEl.textContent = 'Stopped';
-  if(pollTimer) clearTimeout(pollTimer);
-  // stop tracks
-  if(video.srcObject){
-    video.srcObject.getTracks().forEach(t=>t.stop());
-    video.srcObject = null;
-  }
-};
-</script>
+  })
+  </script>
 </body>
 </html>
