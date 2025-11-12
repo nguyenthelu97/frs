@@ -179,6 +179,8 @@
         },
         urlFor(name){ const map = { register: '{{ url_for("register") }}', live: '{{ url_for("live_page") }}', history: '{{ url_for("history") }}', export: '{{ url_for("export") }}' }; return map[name] || '#'; },
         async checkHealth(){
+        console.log("123123");
+        
           const base = window.API_BASE ? window.API_BASE.replace(/\/$/,'') : '';
           const urlCandidates = [];
           if (base) urlCandidates.push(base + '/health', base + '/api/health');
