@@ -1,0 +1,19 @@
+[Unit]
+Description=FRS Flask app
+After=network.target
+
+[Service]
+# chỉnh user/group theo server của bạn (ví dụ youruser hoặc www-data)
+User=www-data
+Group=www-data
+
+# Thay /opt/frs bằng thư mục REMOTE_DIR trên server
+WorkingDirectory=/opt/frs
+Environment="PATH=/opt/frs/venv/bin"
+ExecStart=/opt/frs/venv/bin/gunicorn app:app -w 3 -b 0.0.0.0:8000
+
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

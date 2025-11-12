@@ -1,0 +1,48 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start ssh-agent and add key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Copy repo to remote server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "."
+          target: "${{ secrets.REMOTE_DIR }}"
+          rm: false
+
+      - name: Install deps on remote and restart service
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd "${{ secrets.REMOTE_DIR }}"
+            # create venv if not exists
+            python3 -m venv venv || true
+            . venv/bin/activate
+            pip install -U pip
+            pip install -r requirements.txt
+            # ensure data dirs exist
+            mkdir -p data exports thumbs
+            # reload & restart systemd service (requires sudoers configured)
+            sudo systemctl daemon-reload || true
+            sudo systemctl restart frs || true
+            sudo systemctl status frs --no-pager || true

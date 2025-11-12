@@ -1,17 +1,14 @@
 # app.py (mới)
 import os, io, time, json
-import os
-from flask_cors import CORS
-
-USE_SSL = os.environ.get('FRS_USE_SSL','0') == '1'
-SSL_CERT = os.environ.get('FRS_SSL_CERT','cert.pem')
-SSL_KEY = os.environ.get('FRS_SSL_KEY','key.pem')
 from datetime import datetime, date
 from flask import Flask, request, redirect, url_for, send_file, render_template, flash, jsonify
+from flask_cors import CORS
 import cv2
 import numpy as np
 import face_recognition
 import pandas as pd
+
+from utils import ensure_dirs, DATA_DIR, THUMBS_DIR, load_json, save_json, encoding_to_list, save_thumbnail, now_iso
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE, "data")
@@ -25,8 +22,8 @@ os.makedirs(PROOFS_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 app = Flask(__name__)
-CORS(app)  # allow cross-origin requests from frontend (adjust origin in production)
-app.config['SECRET_KEY'] = 'dev-secret'  # production: change
+CORS(app, resources={r"/*": {"origins": "*"}})  # allow cross-origin requests (adjust origins for production)
+app.secret_key = os.environ.get('FLASK_SECRET', app.secret_key or 'change-me-for-production')
 
 # helpers
 def load_json(path, default):
@@ -517,6 +514,15 @@ def api_delete_employee(emp_id):
         pass
     save_json(EMP_FILE, new_emps)
     return jsonify({'ok': True})
+
+# Health endpoints for quick checks (use curl or the "Check backend" button)
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok', 'timestamp': now_iso()}), 200
+
+@app.route('/api/health', methods=['GET'])
+def api_health():
+    return jsonify({'status': 'ok', 'timestamp': now_iso()}), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
