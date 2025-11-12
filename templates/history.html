@@ -23,32 +23,44 @@
 </head>
 <body>
   <div id="app" class="container">
-    <h1>Attendance History</h1>
+    <h1>Lịch sử điểm danh</h1>
     <div class="nav">
-      <a href="{{ url_for('index') }}">Back</a> |
-      <a href="{{ url_for('export') }}">Export Excel</a>
+      <a href="{{ url_for('index') }}">Trở lại</a> |
+      <a href="{{ url_for('export') }}">Xuất Excel</a>
     </div>
     
-    <form @submit.prevent="filter" class="filter">
-      <label>
-        Date: <input type="date" v-model="filters.date">
-      </label>
-      <label>
-        Employee ID: <input v-model="filters.empId" placeholder="optional">
-      </label>
-      <button type="submit">Filter</button>
-    </form>
+<form @submit.prevent="filter" class="filter">
+  <label>
+    Ngày (từ): <input type="date" v-model="filters.dateFrom">
+  </label>
+  <label>
+    Ngày (đến): <input type="date" v-model="filters.dateTo">
+  </label>
+  <label>
+    Mã nhân viên: <input v-model="filters.empId" placeholder="tùy chọn">
+  </label>
+  <!-- <button type="submit">Lọc</button> -->
+
+  <!-- Export controls -->
+  <div style="margin-left:12px; display:flex; gap:8px; align-items:center;">
+    <label>
+      Chọn tháng xuất dữ liệu: <input type="month" v-model="monthPick">
+    </label>
+    <button type="button" @click="exportMonth" class="filter-export">Xuất tháng</button>
+    <button type="button" @click="exportRange" class="filter-export">Xuất theo khoảng</button>
+  </div>
+</form>
     
     <table class="hist">
       <thead>
         <tr>
           <th>#</th>
-          <th>Time</th>
-          <th>Date</th>
-          <th>Employee</th>
-          <th>Type</th>
-          <th>Proof</th>
-          <th>Confidence</th>
+          <th>Thời gian</th>
+          <th>Ngày</th>
+          <th>Nhân viên</th>
+          <th>Loại</th>
+          <th>Chứng cứ</th>
+          <th>Độ tin cậy</th>
         </tr>
       </thead>
       <tbody>
@@ -87,46 +99,135 @@
     new Vue({
       el: '#app',
       delimiters: ['${', '}'],
-      data: {
-        // đọc JSON history an toàn (editor sẽ không thấy Jinja trong object JS)
-        history: JSON.parse(document.getElementById('history-data').textContent || '[]'),
-        filters: (function(){
-          try {
-            return JSON.parse(document.getElementById('filters-data').textContent || '{}');
-          } catch(e) {
-            console.warn('Invalid filters JSON', e);
-            return { date: null, empId: null };
+       data: {
+      // lịch sử được chèn bởi Jinja trong thẻ #history-data
+      history: JSON.parse(document.getElementById('history-data').textContent || '[]'),
+
+      // filters-data (từ server) có thể là { date:..., empId:... } nhưng chúng ta dùng dateFrom/dateTo
+      filters: (function(){
+        try {
+          const f = JSON.parse(document.getElementById('filters-data').textContent || '{}');
+          // map server legacy "date" to dateFrom/dateTo if provided
+          return {
+            dateFrom: f.date || null,
+            dateTo: f.date || null,
+            empId: f.empId || (f.emp_id || '')  // tolerate different key names
+          };
+        } catch(e) {
+          return { dateFrom: null, dateTo: null, empId: null };
+        }
+      })(),
+
+      // month picker used by export UI (if present)
+      monthPick: ''
+    },
+        computed: {
+      // filteredHistory được dùng để render bảng
+      filteredHistory() {
+        // Return reversed chronological order by timestamp (latest first)
+        const list = Array.isArray(this.history) ? this.history.slice() : [];
+        // Normalize timestamps -> each rec should have a date string "YYYY-MM-DD"
+        const normalizeDate = (rec) => {
+          if (rec.date) return rec.date;
+          if (rec.timestamp) return String(rec.timestamp).split('T')[0];
+          return null;
+        };
+
+        // parse filters
+        const from = this.filters.dateFrom ? this.parseDateSafe(this.filters.dateFrom) : null;
+        const to = this.filters.dateTo ? this.parseDateSafe(this.filters.dateTo) : null;
+        const empFilter = (this.filters.empId || '').toString().trim();
+
+        return list.filter(rec => {
+          const rd = normalizeDate(rec);
+          if (!rd) return false; // ignore records without date
+          const rdDate = this.parseDateSafe(rd);
+          if (!rdDate) return false;
+
+          // date range filter (inclusive)
+          if (from && rdDate < from) return false;
+          if (to && rdDate > to) return false;
+
+          // emp id filter (if provided) - match exactly
+          if (empFilter) {
+            if (String(rec.employee_id) !== empFilter && String(rec.employee_id).indexOf(empFilter) === -1) return false;
           }
-        })()
-      },
-      computed: {
-        filteredHistory() {
-          return this.history.filter(rec => {
-            if (this.filters.date && !(rec.timestamp && rec.timestamp.startsWith(this.filters.date))) return false;
-            if (this.filters.empId && String(rec.employee_id) !== String(this.filters.empId)) return false;
-            return true;
-          });
-        }
-      },
+          return true;
+        }).sort((a,b) => {
+          // sort desc by timestamp if available, else by date/time fields
+          const ta = a.timestamp || (a.date ? (a.date + 'T' + (a.time || '00:00:00')) : '');
+          const tb = b.timestamp || (b.date ? (b.date + 'T' + (b.time || '00:00:00')) : '');
+          // compare strings ISO-like => works for lexicographic compare
+          if (ta < tb) return 1;
+          if (ta > tb) return -1;
+          return 0;
+        });
+      }
+    },
       methods: {
-        formatTime(ts) {
-          if (!ts) return '';
-          const parts = ts.split('T');
-          return parts[1] || '';
-        },
-        formatDate(ts) {
-          if (!ts) return '';
-          const parts = ts.split('T');
-          return parts[0] || '';
-        },
-        getProofUrl(filename) {
-          // Jinja sẽ render base URL cho proofs, kết quả ví dụ: "/proofs/"
-          return `{{ url_for('proofs', filename='') }}${filename}`;
-        },
-        filter() {
-          // hiện tại lọc client-side; có thể submit lên server nếu muốn (redirect với query params)
-          console.log('Filtering', this.filters);
+        parseDateSafe(s) {
+        if (!s) return null;
+        // accept YYYY-MM-DD or ISO timestamp
+        try {
+          // If already Date
+          if (s instanceof Date) return s;
+          // If format YYYY-MM-DD
+          const parts = String(s).split('T')[0].split('-');
+          if (parts.length === 3) {
+            const y = Number(parts[0]), m = Number(parts[1]) - 1, d = Number(parts[2]);
+            return new Date(y, m, d);
+          }
+          // fallback Date parse
+          const d = new Date(s);
+          if (isNaN(d.getTime())) return null;
+          return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        } catch (e) {
+          return null;
         }
+      },
+         formatTime(ts) {
+        if (!ts) return '';
+        const parts = String(ts).split('T');
+        return parts[1] || '';
+      },
+      formatDate(ts) {
+        if (!ts) return '';
+        const parts = String(ts).split('T');
+        return parts[0] || '';
+      },
+
+      getProofUrl(filename) {
+        return `{{ url_for('proofs', filename='') }}${filename}`;
+      },
+
+      // filter button (keeps client-side behaviour, but you can use it to trigger)
+      filter() {
+        // nothing needed: computed property updates automatically
+        // but keep for compatibility with form submit
+        console.log("asdasd");
+        
+        return;
+      },
+
+      // Export month -> opens server export route ?month=YYYY-MM
+      exportMonth() {
+        if (!this.monthPick) { alert('Chọn tháng trước khi xuất.'); return; }
+        const emp = this.filters.empId ? `&empId=${encodeURIComponent(this.filters.empId)}` : '';
+        window.location.href = `/export?month=${encodeURIComponent(this.monthPick)}${emp}`;
+      },
+
+      // Export range -> opens server export route from_date & to_date
+      exportRange() {
+        if (!this.filters.dateFrom && !this.filters.dateTo) {
+          alert('Chọn ngày bắt đầu và/hoặc ngày kết thúc để xuất.');
+          return;
+        }
+        const from = this.filters.dateFrom ? `from_date=${encodeURIComponent(this.filters.dateFrom)}` : '';
+        const to = this.filters.dateTo ? `&to_date=${encodeURIComponent(this.filters.dateTo)}` : '';
+        const emp = this.filters.empId ? `&empId=${encodeURIComponent(this.filters.empId)}` : '';
+        const q = [from, to, emp].filter(Boolean).join('&');
+        window.location.href = `/export?${q}`;
+  },
       }
     });
   </script>

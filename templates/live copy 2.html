@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Live Recognition</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14"></script>
+  <style>
+  body { background:#f4f6fb }
+  .wrap { max-width:1100px; margin:20px auto; display:flex; gap:18px; align-items:flex-start }
+  .left { flex: 0 0 680px; display:flex; flex-direction:column; align-items:center; }
+  .right { flex: 1; min-width:300px; background:#fff; padding:12px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06) }
+
+  /* video container: giữ kích thước cố định và chồng các phần tử lên nhau */
+  .video-wrap { position:relative; width:640px; height:480px; background:#000; overflow:visible; }
+
+  /* đặt cả video và canvas absolute để chồng đúng */
+  .video-wrap video {
+    position:absolute;
+    left:0; top:0;
+    width:100%; height:100%;
+    z-index:1;
+    border-radius:6px;
+    display:block;
+  }
+
+  .video-wrap canvas {
+    position:absolute;
+    left:0; top:0;
+    width:100%; height:100%;
+    z-index:3;             /* canvas nằm trên video */
+    pointer-events:none;   /* cho phép click qua canvas */
+    border-radius:6px;
+  }
+
+  /* controls nằm dưới, đảm bảo luôn trên các phần tử nằm bên dưới (nếu cần) */
+  .controls { margin-top:8px; display:flex; gap:10px; align-items:center; position:relative; z-index:10 }
+  .status { margin-left:8px; color:#333 }
+  h2 { margin-top:0; font-size:18px }
+
+  .recents { display:flex; flex-direction:column; gap:10px; max-height:620px; overflow:auto; }
+  .item { display:flex; gap:10px; align-items:center; border:1px solid #eee; padding:8px; border-radius:6px }
+  .thumb { width:88px; height:66px; object-fit:cover; border-radius:4px; border:1px solid #ddd }
+  .meta { font-size:13px }
+  .meta .name { font-weight:600; color:#1b5fbf }
+  .meta .id { color:#666; font-size:12px }
+  .meta .time { color:#333; margin-top:6px; font-size:12px }
+  .meta .conf { color:#888; margin-top:4px; font-size:12px }
+  .empty { color:#777; padding:10px }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div class="nav container">
+      <a href="{{ url_for('index') }}">← Trờ lại</a>
+    </div>
+
+    <div class="wrap container">
+      <div class="left">
+        <h2>Camera</h2>
+<div class="video-wrap">
+  <video ref="video" autoplay muted playsinline></video>
+  <canvas ref="overlay" id="overlay" width="640" height="480"></canvas>
+</div>
+
+        <div class="controls">
+          <label>Kích thước nhận (px): <input type="number" v-model.number="config.minBoxWidth"></label>
+          <label>Xác nhận khung hình: <input type="number" v-model.number="config.confirmCount"></label>
+          <label>Thời gian mỗi lượt (s): <input type="number" v-model.number="config.cooldown"></label>
+          <button @click="startCamera" :disabled="running">Mở Camera</button>
+          <button @click="stopCamera" :disabled="!running">Dừng</button>
+          <span class="status">${status}</span>
+        </div>
+      </div>
+
+      <div class="right">
+        <h2>Gần đây</h2>
+       <div class="recents" ref="recents">
+  <div v-if="!recents.length" class="empty">Chưa có dữ liệu.</div>
+          <div v-else v-for="(det, idx) in recents" :key="idx" class="item">
+            <img class="thumb" :src="det.thumb || 'https://via.placeholder.com/88x66?text=No+Img'">
+            <div class="meta">
+              <div class="name">${det.name || 'Unknown'}</div>
+              <div class="id" v-if="det.employee_id">ID: ${det.employee_id}</div>
+              <div class="time">${det.time}</div>
+              <div class="conf" v-if="det.confidence != null">confidence: ${det.confidence.toFixed(3)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  new Vue({
+    el: '#app',
+    delimiters: ['${', '}'],
+    data: {
+     running: false,
+  status: 'Stopped',
+  config: {
+    minBoxWidth: 300,
+    confirmCount: 2,
+    cooldown: 10,
+    detectEveryNFrames: 4,   // *important* -> run heavy detect only every N animation frames
+     sendWidth: 640,
+  sendQuality: 0.85,
+  },
+  recents: [],
+  detector: null,
+  rafHandle: null,
+  frameCounter: 0,
+  confirmCounter: 0,
+  lastBox: null,
+  lastSendedTime: 0,
+  lastSentEmployeeTimes: {},
+  // reusable offscreen canvas used both for detection and for sending
+  offscreen: null,
+  offscreenCtx: null,
+  // flag to avoid concurrent sends
+  sending: false
+    },
+async created() {
+  // prepare offscreen canvas once (size will be set when video starts)
+  this.offscreen = document.createElement('canvas');
+  this.offscreenCtx = this.offscreen.getContext('2d');
+
+  if ('FaceDetector' in window) {
+    try {
+      this.detector = new FaceDetector({ fastMode: true, maxDetectedFaces: 4 });
+      console.log('Using native FaceDetector');
+    } catch (e) {
+      console.log('FaceDetector init failed', e);
+      this.detector = null;
+    }
+  }
+},
+    methods: {
+       async startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Camera not available: browser blocks camera on insecure pages. Use HTTPS (ngrok) or open on device localhost.');
+      this.running = false;
+      this.status = 'Camera unavailable';
+      return;
+    }
+    this.running = true;
+    this.status = 'Starting camera...';
+    try {
+      // you can lower requested resolution here (320x240) to increase speed
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      this.$refs.video.srcObject = stream;
+      await this.$refs.video.play();
+
+      // set offscreen to match actual video resolution (but we can choose smaller for detection if wanted)
+      const vw = this.$refs.video.videoWidth || 640;
+      const vh = this.$refs.video.videoHeight || 480;
+      // Choose detection canvas smaller to speed up detection-but keep aspect ratio
+      const detectW = Math.min(640, vw);
+      const detectH = Math.round(detectW * (vh / vw));
+      this.offscreen.width = detectW;
+      this.offscreen.height = detectH;
+
+      this.status = 'Running (local detect)';
+      // start raf loop (single animation loop handles draw + periodic detect)
+      this.frameCounter = 0;
+      if (!this.rafHandle) this.rafHandle = requestAnimationFrame(this._animationLoop);
+    } catch (e) {
+      alert('Cannot open camera: ' + (e.message || e));
+      this.running = false;
+      this.status = 'Error';
+    }
+  },
+
+  stopCamera() {
+    this.running = false;
+    this.status = 'Stopped';
+    if (this.rafHandle) { cancelAnimationFrame(this.rafHandle); this.rafHandle = null; }
+    if (this.$refs.video && this.$refs.video.srcObject) {
+      this.$refs.video.srcObject.getTracks().forEach(t => t.stop());
+      this.$refs.video.srcObject = null;
+    }
+    this.sending = false;
+  },
+
+  // main loop driven by requestAnimationFrame
+  async _animationLoop() {
+    if (!this.running) return;
+    // draw video into overlay canvas (keep existing behavior)
+    if (this.$refs.video.videoWidth && this.$refs.video.videoHeight) {
+      this.$refs.overlay.width = this.$refs.video.videoWidth;
+      this.$refs.overlay.height = this.$refs.video.videoHeight;
+    }
+    const ctx = this.$refs.overlay.getContext('2d');
+    ctx.clearRect(0, 0, this.$refs.overlay.width, this.$refs.overlay.height);
+    ctx.drawImage(this.$refs.video, 0, 0, this.$refs.overlay.width, this.$refs.overlay.height);
+
+    // draw to offscreen at smaller size for detection
+    const offW = this.offscreen.width;
+    const offH = this.offscreen.height;
+    try {
+      this.offscreenCtx.drawImage(this.$refs.video, 0, 0, offW, offH);
+    } catch (e) {
+      // sometimes video not ready yet
+    }
+
+    // run detection only every N frames to reduce cost
+    this.frameCounter = (this.frameCounter + 1) % (this.config.detectEveryNFrames || 4);
+    let faces = [];
+    if (this.frameCounter === 0) {
+      if (this.detector) {
+        try {
+          faces = await this.detector.detect(this.offscreen); // fast native API
+        } catch (e) {
+          console.warn('native detector error', e);
+          faces = [];
+        }
+      } else {
+        // server fallback: do NOT send each time; only detect periodically by sending small image
+        // here we will prepare results from server only when confirmed (below)
+        // keep faces empty for now; fallback detection will be triggered by confirm logic
+        faces = [];
+      }
+    }
+
+    // if native faces found -> convert to expected bbox format (x,y,width,height relative to overlay)
+    if (faces && faces.length) {
+      const faceObjs = faces.map(f => {
+        const bb = f.boundingBox; // boundingBox in offscreen coords
+        // scale bounding box to overlay size
+        const sx = Math.round(bb.x * (this.$refs.overlay.width / offW));
+        const sy = Math.round(bb.y * (this.$refs.overlay.height / offH));
+        const sw = Math.round(bb.width * (this.$refs.overlay.width / offW));
+        const sh = Math.round(bb.height * (this.$refs.overlay.height / offH));
+        return { left: sx, top: sy, width: sw, height: sh, meta: null };
+      });
+      // pick biggest
+      faceObjs.sort((a, b) => b.width - a.width);
+      this._processBest(faceObjs[0], ctx);
+    } else {
+      // no native faces; if not native, do client-side confirm by simple motion/size heuristics
+      // we will use pixel-based heuristic on offscreen: look for any non-black area? (skip here)
+      // Instead, rely on periodic server detection only when confirmCounter indicates stable box:
+      // compute a simple candidate box: center area (we can skip)
+      // If confirmCounter reached threshold, trigger server detect
+      // (so we avoid sending many requests)
+      // We'll just decrement confirmCounter so it doesn't stay high
+      this.confirmCounter = Math.max(0, this.confirmCounter - 1);
+    }
+
+    // next frame
+    this.rafHandle = requestAnimationFrame(this._animationLoop);
+  },
+
+  // process selected best face box (local detection)
+  async _processBest(best, ctx) {
+    // draw detection box
+    this.drawBox(ctx, best, 'Detecting', 'lime');
+
+    const minW = this.config.minBoxWidth || 140;
+    if (best.width >= minW && (this.lastBox == null || this.similarBox(best, this.lastBox))) {
+      this.confirmCounter += 1;
+    } else {
+      this.confirmCounter = 1;
+    }
+    this.lastBox = best;
+
+    // when confirmed -> send *one* capture to server (fallback) OR directly process
+    if (this.confirmCounter >= (this.config.confirmCount || 2)) {
+      const now = Date.now() / 1000;
+      if (now - this.lastSendedTime < (this.config.cooldown || 1)) return;
+
+      // if native detection available, you may skip server sending and run recognition client-side (not implemented)
+      // otherwise send to server but ensure only one send at a time
+      if (!this.detector) {
+        if (this.sending) return;
+        this.sending = true;
+        try {
+          this.status = 'Capturing & sending...';
+          // prepare a small canvas for sending to server to reduce upload size
+          const sendCanvas = document.createElement('canvas');
+          const sw = this.config.sendWidth || 640;
+          const sh = Math.round(sw * (this.offscreen.height / this.offscreen.width));
+          sendCanvas.width = sw; sendCanvas.height = sh;
+          const sctx = sendCanvas.getContext('2d');
+          sctx.drawImage(this.$refs.video, 0, 0, sendCanvas.width, sendCanvas.height);
+
+          const blob = await new Promise(res => sendCanvas.toBlob(res, 'image/jpeg', this.config.sendQuality || 0.7));
+          const fd = new FormData(); fd.append('frame', blob, 'frame.jpg');
+          const resp = await fetch('{{ url_for("api_recognize") }}', { method: 'POST', body: fd });
+          if (resp.ok) {
+            const data = await resp.json();
+            const results = data.results || [];
+            // draw returned boxes on overlay
+            const ctx = this.$refs.overlay.getContext('2d');
+            ctx.clearRect(0, 0, this.$refs.overlay.width, this.$refs.overlay.height);
+            ctx.drawImage(this.$refs.video, 0, 0, this.$refs.overlay.width, this.$refs.overlay.height);
+            results.forEach(r => {
+              this.drawBox(ctx, r.box, r.name || 'Unknown', r.name === 'Unknown' ? 'red' : 'lime');
+              try {
+                const sx = Math.max(0, r.box.left), sy = Math.max(0, r.box.top);
+                const sw2 = Math.max(1, r.box.width), sh2 = Math.max(1, r.box.height);
+                const thumbCanvas = document.createElement('canvas'); thumbCanvas.width = 88; thumbCanvas.height = 66;
+                const tctx = thumbCanvas.getContext('2d');
+                tctx.drawImage(this.$refs.video, sx, sy, sw2, sh2, 0, 0, 88, 66);
+                this.addRecent(r, thumbCanvas.toDataURL('image/jpeg', 0.8));
+              } catch (e) {
+                this.addRecent(r, null);
+              }
+            });
+            this.lastSendedTime = Date.now() / 1000;
+            this.status = 'Last sent: ' + (data.timestamp || new Date().toLocaleTimeString());
+          } else {
+            console.warn('Server returned', resp.status);
+            this.status = 'Server error';
+          }
+        } catch (e) {
+          console.error('sendFrame error', e);
+          this.status = 'Send error';
+        } finally {
+          this.sending = false;
+          this.confirmCounter = 0;
+        }
+      } else {
+        // native detector path: we already had detection, so you can call server for recognition if you still need names
+        // or implement client-side recognition (not in scope). For now, only set lastSendedTime to prevent flooding.
+        this.lastSendedTime = Date.now() / 1000;
+        this.confirmCounter = 0;
+      }
+    }
+  },
+
+  // drawBox unchanged (keep as is)
+  drawBox(ctx, box, label, color='lime') {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.rect(box.left, box.top, box.width, box.height); ctx.stroke();
+    ctx.fillStyle = color; ctx.font = '16px Arial';
+    ctx.fillText(label, Math.max(4, box.left + 4), Math.max(16, box.top + 16));
+  },
+
+  similarBox(a, b) { /* keep existing impl */ 
+    if (!a || !b) return false;
+    const dx = Math.abs((a.left + a.width / 2) - (b.left + b.width / 2));
+    const dy = Math.abs((a.top + a.height / 2) - (b.top + b.height / 2));
+    return (dx < Math.max(a.width, b.width) * 0.4 && dy < Math.max(a.height, b.height) * 0.4);
+  },
+
+  // keep addRecent, getProof etc. unchanged...
+  captureOffscreen() {
+    // not used now (kept for compatibility) — we use this.offscreen directly
+    return { off: this.offscreen, offCtx: this.offscreenCtx };
+  },
+     
+      addRecent(result, cropDataURL){
+        const placeholder = this.$refs.recents.querySelector('.empty');
+        if (placeholder) placeholder.remove();
+        const item = document.createElement('div'); item.className = 'item';
+        const img = document.createElement('img'); img.className = 'thumb'; img.src = cropDataURL || ('https://via.placeholder.com/88x66?text=No+Img');
+        const meta = document.createElement('div'); meta.className = 'meta';
+        const name = document.createElement('div'); name.className = 'name'; name.textContent = result.name || 'Unknown';
+        const id = document.createElement('div'); id.className = 'id'; id.textContent = result.employee_id ? ('ID: ' + result.employee_id) : '';
+        const time = document.createElement('div'); time.className = 'time'; time.textContent = new Date().toLocaleString();
+        const conf = document.createElement('div'); conf.className = 'conf'; conf.textContent = result.confidence!=null?('confidence: '+Number(result.confidence).toFixed(3)):'';
+        meta.appendChild(name); meta.appendChild(id); meta.appendChild(time); meta.appendChild(conf);
+        item.appendChild(img); item.appendChild(meta);
+        this.$refs.recents.insertBefore(item, this.$refs.recents.firstChild);
+        while(this.$refs.recents.children.length > 30) this.$refs.recents.removeChild(this.$refs.recents.lastChild);
+      }
+    }
+  })
+  </script>
+</body>
+</html>

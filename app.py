@@ -1,5 +1,9 @@
 # app.py (mới)
 import os, io, time, json
+import os
+USE_SSL = os.environ.get('FRS_USE_SSL','0') == '1'
+SSL_CERT = os.environ.get('FRS_SSL_CERT','cert.pem')
+SSL_KEY = os.environ.get('FRS_SSL_KEY','key.pem')
 from datetime import datetime, date
 from flask import Flask, request, redirect, url_for, send_file, render_template, flash, jsonify
 import cv2
@@ -151,19 +155,92 @@ def history():
 # export
 @app.route('/export')
 def export():
+    """
+    Export Excel.
+    Query params supported:
+      - month=YYYY-MM        -> export that month (all days in month)
+      - from_date=YYYY-MM-DD & to_date=YYYY-MM-DD  -> export inclusive range
+    If none provided, export all history (original behavior).
+    """
     hist = load_json(HIST_FILE, [])
-    if not hist:
-        return "No history", 400
-    df = pd.DataFrame(hist)
-    bio = io.BytesIO()
-    with pd.ExcelWriter(bio, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='history')
-    bio.seek(0)
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    return send_file(bio, as_attachment=True, download_name=f'history_{ts}.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
-# API recognize (receives 'frame' file)
-recent_time = {}  # để tránh duplicate trong khoảng thời gian ngắn
+    # helper to parse record date (prefer 'date' field, else try timestamp)
+    def rec_date_str(rec):
+        d = rec.get('date')
+        if d:
+            return d  # assumed YYYY-MM-DD
+        ts = rec.get('timestamp')
+        if ts:
+            try:
+                # timestamp might be ISO: 2025-11-11T09:47:38
+                return ts.split('T')[0]
+            except Exception:
+                pass
+        return None
+
+    # get query params
+    month = request.args.get('month', '').strip()            # YYYY-MM
+    from_date = request.args.get('from_date', '').strip()    # YYYY-MM-DD
+    to_date = request.args.get('to_date', '').strip()        # YYYY-MM-DD
+
+    # determine filter range
+    start_date = None
+    end_date = None
+
+    try:
+        if month:
+            # parse month
+            start_date = datetime.strptime(month, '%Y-%m').date()
+            # compute last day of month: next_month_first - 1 day
+            if start_date.month == 12:
+                next_month = date(start_date.year + 1, 1, 1)
+            else:
+                next_month = date(start_date.year, start_date.month + 1, 1)
+            end_date = next_month - timedelta(days=1)
+        elif from_date or to_date:
+            if from_date:
+                start_date = datetime.strptime(from_date, '%Y-%m-%d').date()
+            if to_date:
+                end_date = datetime.strptime(to_date, '%Y-%m-%d').date()
+            # if only one provided, set the other same day
+            if start_date and not end_date:
+                end_date = start_date
+            if end_date and not start_date:
+                start_date = end_date
+    except ValueError as e:
+        return f'Invalid date format: {e}', 400
+
+    # filter history if needed
+    if start_date and end_date:
+        filtered = []
+        for r in hist:
+            rd = rec_date_str(r)
+            if not rd:
+                continue
+            try:
+                rd_date = datetime.strptime(rd, '%Y-%m-%d').date()
+            except Exception:
+                continue
+            if start_date <= rd_date <= end_date:
+                filtered.append(r)
+        df = pd.DataFrame(filtered) if filtered else pd.DataFrame(columns=['employee_id','name','date','time','timestamp','type','proof','confidence'])
+    else:
+        # no filter -> export all
+        df = pd.DataFrame(hist) if hist else pd.DataFrame(columns=['employee_id','name','date','time','timestamp','type','proof','confidence'])
+
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine='openpyxl') as writer:
+        # write main sheet
+        df.to_excel(writer, index=False, sheet_name='history')
+    out.seek(0)
+
+    # create filename describing range
+    if start_date and end_date:
+        filename = f'frs_history_{start_date.isoformat()}_to_{end_date.isoformat()}.xlsx'
+    else:
+        filename = f'frs_history_{int(time.time())}.xlsx'
+
+    return send_file(out, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @app.route('/api/recognize', methods=['POST'])
 def api_recognize():
@@ -439,4 +516,7 @@ def api_delete_employee(emp_id):
     return jsonify({'ok': True})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    if USE_SSL and os.path.exists(SSL_CERT) and os.path.exists(SSL_KEY):
+        app.run(host='0.0.0.0', port=5001, debug=True, ssl_context=(SSL_CERT, SSL_KEY))
+    else:
+        app.run(host='0.0.0.0', port=5001, debug=True)
