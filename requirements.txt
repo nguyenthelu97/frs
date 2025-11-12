@@ -1,5 +1,9 @@
-face_recognition
-opencv-python
-numpy
+flask
+gunicorn
+flask-cors
 pandas
 openpyxl
+numpy
+face_recognition
+# Use headless OpenCV on servers without GUI
+opencv-python-headless

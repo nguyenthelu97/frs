@@ -1,6 +1,8 @@
 # app.py (mới)
 import os, io, time, json
 import os
+from flask_cors import CORS
+
 USE_SSL = os.environ.get('FRS_USE_SSL','0') == '1'
 SSL_CERT = os.environ.get('FRS_SSL_CERT','cert.pem')
 SSL_KEY = os.environ.get('FRS_SSL_KEY','key.pem')
@@ -23,6 +25,7 @@ os.makedirs(PROOFS_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
 app = Flask(__name__)
+CORS(app)  # allow cross-origin requests from frontend (adjust origin in production)
 app.config['SECRET_KEY'] = 'dev-secret'  # production: change
 
 # helpers
@@ -516,7 +519,6 @@ def api_delete_employee(emp_id):
     return jsonify({'ok': True})
 
 if __name__ == '__main__':
-    if USE_SSL and os.path.exists(SSL_CERT) and os.path.exists(SSL_KEY):
-        app.run(host='0.0.0.0', port=5001, debug=True, ssl_context=(SSL_CERT, SSL_KEY))
-    else:
-        app.run(host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+    app.run(host='0.0.0.0', port=port, debug=debug)
