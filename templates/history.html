@@ -99,29 +99,30 @@
     new Vue({
       el: '#app',
       delimiters: ['${', '}'],
-       data: {
-      // lịch sử được chèn bởi Jinja trong thẻ #history-data
-      history: JSON.parse(document.getElementById('history-data').textContent || '[]'),
-
-      // filters-data (từ server) có thể là { date:..., empId:... } nhưng chúng ta dùng dateFrom/dateTo
-      filters: (function(){
+      data: (function(){
+        // safe parse for history + filters: if templates not rendered (contains '{{') fallback
+        const out = { history: [], filters: { dateFrom: null, dateTo: null, empId: null }, monthPick: '' };
+        // history
         try {
-          const f = JSON.parse(document.getElementById('filters-data').textContent || '{}');
-          // map server legacy "date" to dateFrom/dateTo if provided
-          return {
-            dateFrom: f.date || null,
-            dateTo: f.date || null,
-            empId: f.empId || (f.emp_id || '')  // tolerate different key names
-          };
-        } catch(e) {
-          return { dateFrom: null, dateTo: null, empId: null };
-        }
+          const htxt = document.getElementById('history-data') ? document.getElementById('history-data').textContent.trim() : '';
+          if (!htxt || htxt.indexOf('{{') !== -1) out.history = [];
+          else out.history = JSON.parse(htxt);
+        } catch (e) { out.history = []; }
+        // filters-data
+        try {
+          const ftxt = document.getElementById('filters-data') ? document.getElementById('filters-data').textContent.trim() : '';
+          if (!ftxt || ftxt.indexOf('{{') !== -1) {
+            out.filters = { dateFrom: null, dateTo: null, empId: null };
+          } else {
+            const f = JSON.parse(ftxt);
+            out.filters = { dateFrom: f.date || null, dateTo: f.date || null, empId: f.empId || (f.emp_id || '') };
+          }
+        } catch (e) { out.filters = { dateFrom: null, dateTo: null, empId: null }; }
+        return out;
       })(),
-
-      // month picker used by export UI (if present)
-      monthPick: ''
-    },
-        computed: {
+ 
+     },
+         computed: {
       // filteredHistory được dùng để render bảng
       filteredHistory() {
         // Return reversed chronological order by timestamp (latest first)
@@ -197,7 +198,13 @@
       },
 
       getProofUrl(filename) {
-        return `{{ url_for('proofs', filename='') }}${filename}`;
+        // Prefer runtime API_BASE if available (frontend static + backend on Render).
+        if (window && window.API_BASE) return window.API_BASE.replace(/\/$/, '') + '/thumbs/' + encodeURIComponent(filename);
+        // If template was server-rendered, try Flask url_for output (it may be empty text with '{{' if not rendered).
+        const rendered = `{{ url_for('proofs', filename='') }}`;
+        if (rendered && rendered.indexOf('{{') === -1) return rendered + filename;
+        // fallback relative path
+        return '/thumbs/' + encodeURIComponent(filename);
       },
 
       // filter button (keeps client-side behaviour, but you can use it to trigger)

@@ -83,6 +83,8 @@
         </div>
         
         <button class="btn" @click="refresh">Làm mới</button>
+        <!-- Health check button -->
+        <button class="btn ghost" @click="checkHealth" style="margin-left:8px;background:#fff;color:#111;border:1px solid rgba(0,0,0,0.06)">Check backend</button>
       </div>
     </div>
     
@@ -148,8 +150,14 @@
             alert('Delete failed: ' + (err.message || err));
           }
         },
-        getThumbUrl(id){ return `/thumbs/${id}.jpg`; },
+        getThumbUrl(id){
+          // Prefer runtime API_BASE if present (e.g. frontend hosted on GitHub Pages, backend on Render)
+          if (window && window.API_BASE) return window.API_BASE.replace(/\/$/, '') + '/thumbs/' + encodeURIComponent(id) + '.jpg';
+          // If server rendered, the relative path will work.
+          return `/thumbs/${encodeURIComponent(id)}.jpg`;
+        },
         useDefaultImg(e){ e.target.src = 'https://via.placeholder.com/120x120?text=No+Img'; },
+
         applyFilter(){
           const q = this.filterText.trim().toLowerCase();
           if(!q){ this.filtered = this.employees.slice(); return }
@@ -157,12 +165,33 @@
         },
         refresh(){ window.location.reload(); },
         go(route){
-          // friendly client-side navigation; fallback to server URL
-          const map = { register: '{{ url_for("register") }}', live: '{{ url_for("live_page") }}', history: '{{ url_for("history") }}', export: '{{ url_for("export") }}' };
-          const target = map[route] || '/';
+          // Prefer backend-hosted pages if API_BASE provided; otherwise use server-rendered URL map.
+          const renderedMap = { register: '{{ url_for("register") }}', live: '{{ url_for("live_page") }}', history: '{{ url_for("history") }}', export: '{{ url_for("export") }}' };
+          if (window && window.API_BASE) {
+            // navigate to backend UI paths
+            const paths = { register: '/register', live: '/live', history: '/history', export: '/export' };
+            const p = paths[route] || '/';
+            window.location.href = window.API_BASE.replace(/\/$/, '') + p;
+            return;
+          }
+          const target = renderedMap[route] && renderedMap[route].indexOf('{{') === -1 ? renderedMap[route] : '/';
           window.location.href = target;
         },
-        urlFor(name){ const map = { register: '{{ url_for("register") }}', live: '{{ url_for("live_page") }}', history: '{{ url_for("history") }}', export: '{{ url_for("export") }}' }; return map[name] || '#'; }
+        urlFor(name){ const map = { register: '{{ url_for("register") }}', live: '{{ url_for("live_page") }}', history: '{{ url_for("history") }}', export: '{{ url_for("export") }}' }; return map[name] || '#'; },
+        async checkHealth(){
+          const base = window.API_BASE ? window.API_BASE.replace(/\/$/,'') : '';
+          const urlCandidates = [];
+          if (base) urlCandidates.push(base + '/health', base + '/api/health');
+          // also try relative paths if app served by Flask
+          urlCandidates.push('/health', '/api/health');
+          for (const u of urlCandidates) {
+            try {
+              const r = await fetch(u, { cache: 'no-store' });
+              if (r.ok) { alert('Backend reachable: ' + u); return; }
+            } catch (e){}
+          }
+          alert('Backend not reachable. Check Render service URL and CORS.');
+        }
       }
     })
   </script>

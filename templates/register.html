@@ -198,8 +198,11 @@
   <script>
     (function () {
       let serverData = {};
-      try { serverData = JSON.parse(document.getElementById('server-data').textContent || '{}'); }
-      catch (e) { console.warn('server-data parse fail', e); serverData = {}; }
+      try {
+        const txt = document.getElementById('server-data') ? document.getElementById('server-data').textContent.trim() : '';
+        if (!txt || txt.indexOf('{{') !== -1) serverData = {};
+        else serverData = JSON.parse(txt);
+      } catch (e) { console.warn('server-data parse fail', e); serverData = {}; }
 
       new Vue({
         el: '#app',
@@ -290,7 +293,7 @@
 
             try {
               if (this.isEdit) {
-                const targetUrl = `/employee/${encodeURIComponent(this.originalId)}/edit`;
+                const targetUrl = this.urls.edit || `/employee/${encodeURIComponent(this.originalId)}/edit`;
                 const res = await fetch(targetUrl, { method: 'POST', body: fd, redirect: 'follow' });
                 if (res.redirected) { window.location.href = res.url; return; }
                 if (!res.ok) {
@@ -299,7 +302,12 @@
                 }
                 window.location.href = this.urls.index || '/';
               } else {
-                const registerUrl = this.urls.register || '/register';
+                // Use server-provided register URL if present. If this template wasn't server-rendered (static),
+                // fall back to window.API_BASE (Render URL) + /register.
+                let registerUrl = this.urls.register || '/register';
+                if ((!this.urls || !this.urls.register) && window && window.API_BASE) {
+                  registerUrl = window.API_BASE.replace(/\/$/, '') + '/register';
+                }
                 const res = await fetch(registerUrl, { method: 'POST', body: fd, redirect: 'follow' });
                 if (res.redirected) { window.location.href = res.url; return; }
                 if (!res.ok) {
@@ -319,7 +327,7 @@
         }
       });
     })();
-  </script>
+   </script>
 </body>
 
 </html>

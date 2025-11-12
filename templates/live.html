@@ -288,7 +288,16 @@
       async sendFrameToServer(off){
         const blob = await new Promise(res => off.toBlob(res, 'image/jpeg', 0.8));
         const fd = new FormData(); fd.append('frame', blob, 'frame.jpg');
-        const resp = await fetch('{{ url_for("api_recognize") }}', { method:'POST', body: fd });
+        // Determine server URL: prefer runtime window.API_BASE for static frontend
+        let url = '';
+        if (window && window.API_BASE) {
+          url = window.API_BASE.replace(/\/$/, '') + '/api/recognize';
+        } else {
+          // if template rendered by Flask, url_for will produce a proper path; otherwise contains '{{'
+          const jurl = '{{ url_for("api_recognize") }}';
+          url = (jurl && jurl.indexOf('{{')===-1) ? jurl : '/api/recognize';
+        }
+        const resp = await fetch(url, { method:'POST', body: fd });
         if(!resp.ok) throw new Error('server '+resp.status);
         const data = await resp.json();
         return data;
